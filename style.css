@@ -23,7 +23,16 @@ body {
   flex-direction: column;
   align-items: center;
 }
-
+#nav-dots:after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 2px;
+  background: black;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
 .dot {
   position: relative;
   width: 14px;
@@ -33,6 +42,7 @@ body {
   border-radius: 50%;
   cursor: pointer;
   transition: background 0.3s;
+  z-index: 2;
 }
 
 .dot:first-child {
@@ -83,5 +93,5 @@ body {
   bottom: 0;
   left: 50%;
   transform: translateX(-50%);
-  z-index: -1;
+  z-index: 1;
 }
