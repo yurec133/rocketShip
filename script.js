@@ -23,7 +23,10 @@ let lastLoadedFrame = 0;
 // Секції
 const sections = 5;
 const sectionFrames = Math.floor(frameCount / sections);
-const activeFrameRange = 100;
+const activeFrameRange = 100; // Діапазон для класу active на точках
+const panelActiveFrameRange = 200; // Розширений діапазон для панелей
+let activeSectionIndex = -1; // Для відстеження поточної активної секції
+const panelStates = new Array(sections).fill(false); // Відстежуємо стан кожної панелі
 
 // Ліниве завантаження
 const preloadImages = (start, end) => {
@@ -70,27 +73,80 @@ function render() {
   context.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
 }
 
-// Анімація появи секції
-function animateSection(sectionIndex) {
+// Анімація появи/зникнення секції
+function animateSection(sectionIndex, isActive) {
   const panels = document.querySelectorAll(".panel");
-  panels.forEach((panel, i) => {
-    if (i === sectionIndex) {
-      gsap.to(panel, {
+  const panel = panels[sectionIndex];
+  if (!panel) return;
+
+  // Якщо стан не змінився, пропускаємо анімацію
+  if (panelStates[sectionIndex] === isActive) return;
+
+  panelStates[sectionIndex] = isActive; // Оновлюємо стан
+  gsap.killTweensOf(panel); // Завершуємо попередні анімації
+
+  if (isActive) {
+    gsap.fromTo(
+      panel,
+      { opacity: 0, y: "10vh", scale: 0.95, rotation: 1 }, // Поява знизу з легким обертанням
+      {
         opacity: 1,
         y: 0,
-        duration: 0.5,
-        ease: "power2.out",
+        scale: 1,
+        rotation: 0,
+        duration: 0.8, // Трохи швидше для динаміки
+        ease: "power3.out", // Кастомний easing для "пружного" ефекту
         onStart: () => panel.classList.add("active"),
-      });
-    } else {
-      gsap.to(panel, {
-        opacity: 0,
-        y: 50,
-        duration: 0.5,
+      }
+    );
+
+    // Анімація дочірніх елементів із затримкою
+    const children = panel.querySelectorAll(".panel > *");
+    gsap.fromTo(
+      children,
+      { opacity: 0, y: "20vh" },
+      {
+        opacity: 1,
+        y: 0,
+        duration: 0.6,
+        stagger: 0.1, // Затримка 0.1с між елементами
         ease: "power2.out",
-        onComplete: () => panel.classList.remove("active"),
-      });
-    }
+        delay: 0.2, // Початок після основної анімації
+      }
+    );
+  } else {
+    gsap.to(panel, {
+      opacity: 0,
+      y: "-25vh", // Зникнення вгору, адаптивне до висоти екрана
+      scale: 0.95,
+      rotation: -1, // Легке обертання для зникнення
+      filter: "blur(5px)", // Додаємо розмиття
+      duration: 0.8, // Трохи швидше
+      ease: "power3.in", // Плавніше зникнення
+      onComplete: () => {
+        panel.classList.remove("active");
+        gsap.set(panel, { filter: "blur(0px)" }); // Скидаємо розмиття
+      },
+    });
+
+    // Зникнення дочірніх елементів
+    const children = panel.querySelectorAll(".panel > *");
+    gsap.to(children, {
+      opacity: 0,
+      y: '-20vh',
+      duration: 0.6,
+      stagger: 0.1,
+      ease: "power2.in",
+    });
+  }
+}
+
+// Оновлення active стану точок і панелей
+function updateActiveDot(sectionIndex) {
+  document.querySelectorAll(".dot").forEach((dot, i) => {
+    const isActive = i === sectionIndex;
+    dot.classList.toggle("active", isActive);
+    animateSection(i, isActive); // При кліку анімація негайна
   });
 }
 
@@ -120,7 +176,7 @@ const initAnimation = () => {
 
         if (!gsap.isTweening(window)) {
           const navHeight = nav.offsetHeight;
-          const lineHeight = self.progress * navHeight;
+          let newSectionIndex = -1;
 
           document.querySelectorAll(".dot").forEach((dot, i) => {
             const dotRect = dot.getBoundingClientRect();
@@ -128,17 +184,31 @@ const initAnimation = () => {
             const dotCenter = dotRect.top + dotRect.height / 2 - navRect.top;
 
             const dotFrame = (dotCenter / navHeight) * (frameCount - 1);
-            const isActive =
+
+            // Діапазон для класу active на точці
+            const isDotActive =
               currentFrame >= dotFrame &&
               currentFrame < dotFrame + activeFrameRange;
 
-            dot.classList.toggle("active", isActive);
+            // Розширений діапазон для видимості панелі
+            const isPanelActive =
+              currentFrame >= dotFrame &&
+              currentFrame < dotFrame + panelActiveFrameRange;
 
-            // Синхронізація секцій
-            if (isActive) {
-              animateSection(i);
+            // Оновлюємо клас active для точки
+            dot.classList.toggle("active", isDotActive);
+
+            // Викликаємо анімацію лише якщо стан панелі змінився
+            if (panelStates[i] !== isPanelActive) {
+              animateSection(i, isPanelActive);
+            }
+
+            if (isDotActive) {
+              newSectionIndex = i;
             }
           });
+
+          activeSectionIndex = newSectionIndex;
         }
       },
     },
@@ -163,21 +233,15 @@ function animateLineToDot(dot) {
   });
 }
 
-// Оновлення active стану точок
-function updateActiveDot(sectionIndex) {
-  document.querySelectorAll(".dot").forEach((dot, i) => {
-    dot.classList.toggle("active", i === sectionIndex);
-  });
-}
-
 // Навігація по точках
 document.querySelectorAll(".dot").forEach((dot) => {
   dot.addEventListener("click", () => {
     const section = parseInt(dot.dataset.section, 10);
     const targetFrame = section * sectionFrames;
 
+    // Оновлюємо активну точку та панелі
     updateActiveDot(section);
-    animateSection(section);
+    activeSectionIndex = section;
 
     gsap.to(imgSeq, {
       frame: targetFrame,
