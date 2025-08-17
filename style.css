@@ -2,7 +2,12 @@ body {
   margin: 0;
   padding: 0;
   overflow-x: hidden;
-  background: black;
+  background: #000;
+  color: #fff;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.2;
+  font-weight: 400;
 }
 
 #sequence {
@@ -54,7 +59,9 @@ body {
 
 .dot span {
   position: absolute;
-  left: -120%;
+  left: -185px;
+  width: 170px;
+  text-align: right;
   top: 50%;
   transform: translateY(-50%);
   white-space: nowrap;
@@ -94,4 +101,22 @@ body {
   left: 50%;
   transform: translateX(-50%);
   z-index: 1;
+}
+
+.panel {
+  font-size: 35px;
+}
+.panel h1,
+.panel h2 {
+  font-size: 110px;
+  font-weight: 700;
+  margin: 0 0 35px;
+}
+.panel strong {
+  display: block;
+  font-size: 32px;
+}
+.panel p {
+  margin: 0 0 10px;
+  color: rgba(255, 255, 255, 0.7);
 }
