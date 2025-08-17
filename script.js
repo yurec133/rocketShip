@@ -1,20 +1,11 @@
-gsap.registerPlugin(ScrollTrigger,ScrollToPlugin);
-
+gsap.registerPlugin(ScrollTrigger, ScrollToPlugin);
 
 const canvas = document.getElementById("sequence");
 const context = canvas.getContext("2d");
 
-const isFullScreen = () =>
-  window.screen.width === 1920 && window.screen.height === 1080;
-
 const resizeCanvas = () => {
-  if (isFullScreen()) {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-  } else {
-    canvas.width = Math.min(window.innerWidth, 1920);
-    canvas.height = Math.min(window.innerHeight, 1080);
-  }
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
 };
 
 resizeCanvas();
@@ -52,7 +43,7 @@ const preloadImages = (start, end) => {
   lastLoadedFrame = Math.max(lastLoadedFrame, end);
 };
 
-// Рендер кадру
+// Рендер кадру (завжди cover)
 function render() {
   if (!images[imgSeq.frame]) return;
 
@@ -64,32 +55,17 @@ function render() {
 
   let drawWidth, drawHeight, offsetX, offsetY;
 
-  if (isFullScreen()) {
-    // Cover
-    if (canvasRatio > imgRatio) {
-      drawWidth = canvas.width;
-      drawHeight = canvas.width / imgRatio;
-      offsetX = 0;
-      offsetY = (canvas.height - drawHeight) / 2;
-    } else {
-      drawHeight = canvas.height;
-      drawWidth = canvas.height * imgRatio;
-      offsetX = (canvas.width - drawWidth) / 2;
-      offsetY = 0;
-    }
+  // Завжди cover
+  if (canvasRatio > imgRatio) {
+    drawWidth = canvas.width;
+    drawHeight = canvas.width / imgRatio;
+    offsetX = 0;
+    offsetY = (canvas.height - drawHeight) / 2;
   } else {
-    // Contain
-    if (canvasRatio > imgRatio) {
-      drawHeight = canvas.height;
-      drawWidth = canvas.height * imgRatio;
-      offsetX = (canvas.width - drawWidth) / 2;
-      offsetY = 0;
-    } else {
-      drawWidth = canvas.width;
-      drawHeight = canvas.width / imgRatio;
-      offsetX = 0;
-      offsetY = (canvas.height - drawHeight) / 2;
-    }
+    drawHeight = canvas.height;
+    drawWidth = canvas.height * imgRatio;
+    offsetX = (canvas.width - drawWidth) / 2;
+    offsetY = 0;
   }
 
   context.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
@@ -119,7 +95,6 @@ const initAnimation = () => {
         const sectionStart = sectionIndex * sectionFrames;
         const sectionMiddle = sectionStart + sectionFrames / 2;
 
-        // Чи ми в буфері
         const inBuffer =
           currentFrame >= sectionMiddle - buffer &&
           currentFrame <= sectionMiddle + buffer;
@@ -128,7 +103,6 @@ const initAnimation = () => {
           dot.classList.toggle("active", i === sectionIndex && inBuffer);
         });
 
-        // Лінія прогресу
         const line = document.querySelector("#nav-dots .line");
         if (line) line.style.height = `${self.progress * 100}%`;
       },
