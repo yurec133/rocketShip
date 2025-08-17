@@ -23,7 +23,7 @@ let lastLoadedFrame = 0;
 // Секції
 const sections = 5;
 const sectionFrames = Math.floor(frameCount / sections);
-const activeFrameRange = 100; // Кількість кадрів, протягом яких точка активна після досягнення
+const activeFrameRange = 100;
 
 // Ліниве завантаження
 const preloadImages = (start, end) => {
@@ -43,7 +43,7 @@ const preloadImages = (start, end) => {
   lastLoadedFrame = Math.max(lastLoadedFrame, end);
 };
 
-// Рендер кадру (завжди cover)
+// Рендер кадру
 function render() {
   if (!images[imgSeq.frame]) return;
 
@@ -70,6 +70,30 @@ function render() {
   context.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
 }
 
+// Анімація появи секції
+function animateSection(sectionIndex) {
+  const panels = document.querySelectorAll(".panel");
+  panels.forEach((panel, i) => {
+    if (i === sectionIndex) {
+      gsap.to(panel, {
+        opacity: 1,
+        y: 0,
+        duration: 0.5,
+        ease: "power2.out",
+        onStart: () => panel.classList.add("active"),
+      });
+    } else {
+      gsap.to(panel, {
+        opacity: 0,
+        y: 50,
+        duration: 0.5,
+        ease: "power2.out",
+        onComplete: () => panel.classList.remove("active"),
+      });
+    }
+  });
+}
+
 // GSAP анімація скролу
 const initAnimation = () => {
   gsap.to(imgSeq, {
@@ -87,7 +111,6 @@ const initAnimation = () => {
         preloadImages(currentFrame, currentFrame + batchSize);
         requestAnimationFrame(render);
 
-        // Оновлення лінії лише якщо немає активної анімації кліку
         const line = document.querySelector("#nav-dots .line");
         const nav = document.querySelector("#nav-dots");
         if (line && nav && !gsap.isTweening(line)) {
@@ -95,7 +118,6 @@ const initAnimation = () => {
           line.style.height = `${self.progress * navHeight}px`;
         }
 
-        // Оновлення active лише якщо немає активної анімації кліку
         if (!gsap.isTweening(window)) {
           const navHeight = nav.offsetHeight;
           const lineHeight = self.progress * navHeight;
@@ -105,15 +127,17 @@ const initAnimation = () => {
             const navRect = nav.getBoundingClientRect();
             const dotCenter = dotRect.top + dotRect.height / 2 - navRect.top;
 
-            // Визначаємо кадр, коли лінія досягає точки
             const dotFrame = (dotCenter / navHeight) * (frameCount - 1);
-
-            // Точка активна, якщо поточний кадр у межах [dotFrame, dotFrame + activeFrameRange]
             const isActive =
               currentFrame >= dotFrame &&
               currentFrame < dotFrame + activeFrameRange;
 
             dot.classList.toggle("active", isActive);
+
+            // Синхронізація секцій
+            if (isActive) {
+              animateSection(i);
+            }
           });
         }
       },
@@ -121,7 +145,7 @@ const initAnimation = () => {
   });
 };
 
-// Функція анімації лінії до dot
+// Анімація лінії до dot
 function animateLineToDot(dot) {
   const line = document.querySelector("#nav-dots .line");
   const nav = document.querySelector("#nav-dots");
@@ -152,10 +176,9 @@ document.querySelectorAll(".dot").forEach((dot) => {
     const section = parseInt(dot.dataset.section, 10);
     const targetFrame = section * sectionFrames;
 
-    // Оновлення active стану негайно
     updateActiveDot(section);
+    animateSection(section);
 
-    // Анімація кадрів
     gsap.to(imgSeq, {
       frame: targetFrame,
       duration: 1,
@@ -163,7 +186,6 @@ document.querySelectorAll(".dot").forEach((dot) => {
       onUpdate: render,
     });
 
-    // Анімація скролу
     gsap.to(window, {
       scrollTo: {
         y: (targetFrame / frameCount) * ScrollTrigger.maxScroll(window),
@@ -171,12 +193,10 @@ document.querySelectorAll(".dot").forEach((dot) => {
       duration: 1,
       ease: "power2.inOut",
       onComplete: () => {
-        // Повторне оновлення active після завершення анімації скролу
         updateActiveDot(section);
       },
     });
 
-    // Анімація лінії до вибраної dot
     animateLineToDot(dot);
   });
 });
