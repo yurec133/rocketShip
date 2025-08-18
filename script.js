@@ -22,7 +22,7 @@ let lastLoadedFrame = 0;
 
 // Секції
 const sections = 5;
-const sectionFrames = Math.floor(frameCount / sections);
+const sectionFrames = Math.floor(frameCount / sections); // 438 кадрів на секцію
 const activeFrameRange = 100; // Діапазон для класу active на точках
 const panelActiveFrameRange = 200; // Розширений діапазон для панелей
 let activeSectionIndex = -1; // Для відстеження поточної активної секції
@@ -88,19 +88,19 @@ function animateSection(sectionIndex, isActive) {
   if (isActive) {
     gsap.fromTo(
       panel,
-      { opacity: 0, y: "10vh", scale: 0.95, rotation: 1 }, // Поява знизу з легким обертанням
+      { opacity: 0, y: "10vh", scale: 0.95, rotation: 1 },
       {
         opacity: 1,
         y: 0,
         scale: 1,
         rotation: 0,
-        duration: 0.8, // Трохи швидше для динаміки
-        ease: "power3.out", // Кастомний easing для "пружного" ефекту
+        duration: 0.8,
+        ease: "power3.out",
         onStart: () => panel.classList.add("active"),
-      }
+      },
     );
 
-    // Анімація дочірніх елементів із затримкою
+    // Анімація дочірніх елементів
     const children = panel.querySelectorAll(".panel > *");
     gsap.fromTo(
       children,
@@ -109,23 +109,23 @@ function animateSection(sectionIndex, isActive) {
         opacity: 1,
         y: 0,
         duration: 0.6,
-        stagger: 0.1, // Затримка 0.1с між елементами
+        stagger: 0.1,
         ease: "power2.out",
-        delay: 0.2, // Початок після основної анімації
-      }
+        delay: 0.2,
+      },
     );
   } else {
     gsap.to(panel, {
       opacity: 0,
-      y: "-25vh", // Зникнення вгору, адаптивне до висоти екрана
+      y: "-25vh",
       scale: 0.95,
-      rotation: -1, // Легке обертання для зникнення
-      filter: "blur(5px)", // Додаємо розмиття
-      duration: 0.8, // Трохи швидше
-      ease: "power3.in", // Плавніше зникнення
+      rotation: -1,
+      filter: "blur(5px)",
+      duration: 0.8,
+      ease: "power3.in",
       onComplete: () => {
         panel.classList.remove("active");
-        gsap.set(panel, { filter: "blur(0px)" }); // Скидаємо розмиття
+        gsap.set(panel, { filter: "blur(0px)" });
       },
     });
 
@@ -133,7 +133,7 @@ function animateSection(sectionIndex, isActive) {
     const children = panel.querySelectorAll(".panel > *");
     gsap.to(children, {
       opacity: 0,
-      y: '-20vh',
+      y: "-20vh",
       duration: 0.6,
       stagger: 0.1,
       ease: "power2.in",
@@ -171,29 +171,25 @@ const initAnimation = () => {
         const nav = document.querySelector("#nav-dots");
         if (line && nav && !gsap.isTweening(line)) {
           const navHeight = nav.offsetHeight;
-          line.style.height = `${self.progress * navHeight}px`;
+          line.style.height = `${Math.min(self.progress * navHeight * (sections / (sections - 1)), navHeight)}px`;
         }
 
         if (!gsap.isTweening(window)) {
-          const navHeight = nav.offsetHeight;
           let newSectionIndex = -1;
 
+          // Використовуємо sectionFrames для визначення активної секції
           document.querySelectorAll(".dot").forEach((dot, i) => {
-            const dotRect = dot.getBoundingClientRect();
-            const navRect = nav.getBoundingClientRect();
-            const dotCenter = dotRect.top + dotRect.height / 2 - navRect.top;
-
-            const dotFrame = (dotCenter / navHeight) * (frameCount - 1);
+            const sectionFrame = i * sectionFrames; // Точно відповідає targetFrame при кліку
 
             // Діапазон для класу active на точці
             const isDotActive =
-              currentFrame >= dotFrame &&
-              currentFrame < dotFrame + activeFrameRange;
+              currentFrame >= sectionFrame &&
+              currentFrame < sectionFrame + activeFrameRange;
 
             // Розширений діапазон для видимості панелі
             const isPanelActive =
-              currentFrame >= dotFrame &&
-              currentFrame < dotFrame + panelActiveFrameRange;
+              currentFrame >= sectionFrame &&
+              currentFrame < sectionFrame + panelActiveFrameRange;
 
             // Оновлюємо клас active для точки
             dot.classList.toggle("active", isDotActive);
