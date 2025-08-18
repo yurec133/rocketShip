@@ -1,266 +1,261 @@
-gsap.registerPlugin(ScrollTrigger, ScrollToPlugin);
+(function() {
+  'use strict';
 
-const canvas = document.getElementById("sequence");
-const context = canvas.getContext("2d");
+  gsap.registerPlugin(ScrollTrigger, ScrollToPlugin);
 
-const resizeCanvas = () => {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-};
+  // Constants
+  const canvas = document.getElementById('sequence');
+  const context = canvas.getContext('2d');
+  const frameCount = 2191;
+  const sections = 5;
+  const sectionFrames = Math.floor(frameCount / sections); // ~438 frames per section
+  const activeFrameRange = 100; // Range for dot active class
+  const panelActiveFrameRange = 200; // Extended range for panels
+  const batchSize = 1000;
 
-resizeCanvas();
-window.addEventListener("resize", resizeCanvas);
+  // Precompute section starts (handle remainder for last section)
+  const sectionStarts = Array.from({ length: sections }, (_, i) => i * sectionFrames);
 
-const frameCount = 2191;
-const currentFrame = (index) =>
-  `images/${index.toString().padStart(4, "0")}.webp`;
+  // Cached elements
+  const dots = document.querySelectorAll('.dot');
+  const panels = document.querySelectorAll('.panel');
+  const line = document.querySelector('#nav-dots .line');
+  const nav = document.querySelector('#nav-dots');
 
-const images = new Array(frameCount).fill(null);
-const imgSeq = { frame: 0 };
-const batchSize = 1000;
-let lastLoadedFrame = 0;
+  // State
+  const images = new Array(frameCount).fill(null);
+  const imgSeq = { frame: 0, lastRenderedFrame: -1 };
+  let lastLoadedFrame = 0;
+  let activeSectionIndex = -1;
+  const panelStates = new Array(sections).fill(false);
 
-// Секції
-const sections = 5;
-const sectionFrames = Math.floor(frameCount / sections); // 438 кадрів на секцію
-const activeFrameRange = 100; // Діапазон для класу active на точках
-const panelActiveFrameRange = 200; // Розширений діапазон для панелей
-let activeSectionIndex = -1; // Для відстеження поточної активної секції
-const panelStates = new Array(sections).fill(false); // Відстежуємо стан кожної панелі
+  // Precompute line multiplier
+  const lineMultiplier = sections / (sections - 1);
 
-// Ліниве завантаження
-const preloadImages = (start, end) => {
-  start = Math.max(1, start);
-  end = Math.min(end, frameCount);
-  for (let i = start; i <= end; i++) {
-    if (!images[i - 1]) {
-      const img = new Image();
-      img.src = currentFrame(i);
-      img.onload = () => {
-        if (i === 1) render();
-      };
-      img.onerror = () => console.error(`Failed to load image ${i}`);
-      images[i - 1] = img;
+  // Resize canvas
+  const resizeCanvas = () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  };
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+
+  // Frame URL generator
+  const currentFrame = (index) => `images/${index.toString().padStart(4, '0')}.webp`;
+
+  // Async preload images in batch
+  const preloadImages = async (start, end) => {
+    start = Math.max(1, start);
+    end = Math.min(end, frameCount);
+    const promises = [];
+    for (let i = start; i <= end; i++) {
+      if (!images[i - 1]) {
+        const img = new Image();
+        img.src = currentFrame(i);
+        promises.push(
+          new Promise((resolve, reject) => {
+            img.onload = () => {
+              images[i - 1] = img;
+              if (i - 1 === imgSeq.frame) render(); // Render if current frame loaded
+              resolve();
+            };
+            img.onerror = () => {
+              console.error(`Failed to load image ${i}`);
+              reject();
+            };
+          })
+        );
+      }
     }
+    await Promise.all(promises);
+    lastLoadedFrame = Math.max(lastLoadedFrame, end);
+  };
+
+  // Render frame (only if changed and loaded)
+  function render() {
+    if (!images[imgSeq.frame] || imgSeq.frame === imgSeq.lastRenderedFrame) return;
+
+    const img = images[imgSeq.frame];
+    context.clearRect(0, 0, canvas.width, canvas.height);
+
+    const canvasRatio = canvas.width / canvas.height;
+    const imgRatio = img.width / img.height;
+    let drawWidth, drawHeight, offsetX, offsetY;
+
+    if (canvasRatio > imgRatio) {
+      drawWidth = canvas.width;
+      drawHeight = canvas.width / imgRatio;
+      offsetX = 0;
+      offsetY = (canvas.height - drawHeight) / 2;
+    } else {
+      drawHeight = canvas.height;
+      drawWidth = canvas.height * imgRatio;
+      offsetX = (canvas.width - drawWidth) / 2;
+      offsetY = 0;
+    }
+
+    context.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+    imgSeq.lastRenderedFrame = imgSeq.frame;
   }
-  lastLoadedFrame = Math.max(lastLoadedFrame, end);
-};
 
-// Рендер кадру
-function render() {
-  if (!images[imgSeq.frame]) return;
+  // Animate panel show/hide
+  function animateSection(sectionIndex, isActive) {
+    const panel = panels[sectionIndex];
+    if (!panel || panelStates[sectionIndex] === isActive) return;
 
-  const img = images[imgSeq.frame];
-  context.clearRect(0, 0, canvas.width, canvas.height);
+    panelStates[sectionIndex] = isActive;
+    gsap.killTweensOf(panel);
 
-  const canvasRatio = canvas.width / canvas.height;
-  const imgRatio = img.width / img.height;
+    const children = panel.querySelectorAll('.panel > *'); // Cache children once per call
 
-  let drawWidth, drawHeight, offsetX, offsetY;
-
-  if (canvasRatio > imgRatio) {
-    drawWidth = canvas.width;
-    drawHeight = canvas.width / imgRatio;
-    offsetX = 0;
-    offsetY = (canvas.height - drawHeight) / 2;
-  } else {
-    drawHeight = canvas.height;
-    drawWidth = canvas.height * imgRatio;
-    offsetX = (canvas.width - drawWidth) / 2;
-    offsetY = 0;
-  }
-
-  context.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
-}
-
-// Анімація появи/зникнення секції
-function animateSection(sectionIndex, isActive) {
-  const panels = document.querySelectorAll(".panel");
-  const panel = panels[sectionIndex];
-  if (!panel) return;
-
-  // Якщо стан не змінився, пропускаємо анімацію
-  if (panelStates[sectionIndex] === isActive) return;
-
-  panelStates[sectionIndex] = isActive; // Оновлюємо стан
-  gsap.killTweensOf(panel); // Завершуємо попередні анімації
-
-  if (isActive) {
-    gsap.fromTo(
-      panel,
-      { opacity: 0, y: "10vh", scale: 0.95, rotation: 1 },
-      {
-        opacity: 1,
-        y: 0,
-        scale: 1,
-        rotation: 0,
+    if (isActive) {
+      gsap.fromTo(
+        panel,
+        { opacity: 0, y: '10vh', scale: 0.95, rotation: 1 },
+        {
+          opacity: 1,
+          y: 0,
+          scale: 1,
+          rotation: 0,
+          duration: 0.8,
+          ease: 'power3.out',
+          onStart: () => panel.classList.add('active'),
+        }
+      );
+      gsap.fromTo(
+        children,
+        { opacity: 0, y: '20vh' },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.6,
+          stagger: 0.1,
+          ease: 'power2.out',
+          delay: 0.2,
+        }
+      );
+    } else {
+      gsap.to(panel, {
+        opacity: 0,
+        y: '-25vh',
+        scale: 0.95,
+        rotation: -1,
+        filter: 'blur(5px)',
         duration: 0.8,
-        ease: "power3.out",
-        onStart: () => panel.classList.add("active"),
-      },
-    );
-
-    // Анімація дочірніх елементів
-    const children = panel.querySelectorAll(".panel > *");
-    gsap.fromTo(
-      children,
-      { opacity: 0, y: "20vh" },
-      {
-        opacity: 1,
-        y: 0,
+        ease: 'power3.in',
+        onComplete: () => {
+          panel.classList.remove('active');
+          gsap.set(panel, { filter: 'blur(0px)' });
+        },
+      });
+      gsap.to(children, {
+        opacity: 0,
+        y: '-20vh',
         duration: 0.6,
         stagger: 0.1,
-        ease: "power2.out",
-        delay: 0.2,
-      },
-    );
-  } else {
-    gsap.to(panel, {
-      opacity: 0,
-      y: "-25vh",
-      scale: 0.95,
-      rotation: -1,
-      filter: "blur(5px)",
-      duration: 0.8,
-      ease: "power3.in",
-      onComplete: () => {
-        panel.classList.remove("active");
-        gsap.set(panel, { filter: "blur(0px)" });
-      },
-    });
+        ease: 'power2.in',
+      });
+    }
+  }
 
-    // Зникнення дочірніх елементів
-    const children = panel.querySelectorAll(".panel > *");
-    gsap.to(children, {
-      opacity: 0,
-      y: "-20vh",
-      duration: 0.6,
-      stagger: 0.1,
-      ease: "power2.in",
+  // Update active dots and panels (for click)
+  function updateActiveDot(sectionIndex) {
+    dots.forEach((dot, i) => {
+      const isActive = i === sectionIndex;
+      dot.classList.toggle('active', isActive);
+      animateSection(i, isActive);
     });
   }
-}
 
-// Оновлення active стану точок і панелей
-function updateActiveDot(sectionIndex) {
-  document.querySelectorAll(".dot").forEach((dot, i) => {
-    const isActive = i === sectionIndex;
-    dot.classList.toggle("active", isActive);
-    animateSection(i, isActive); // При кліку анімація негайна
-  });
-}
-
-// GSAP анімація скролу
-const initAnimation = () => {
-  gsap.to(imgSeq, {
-    frame: frameCount - 1,
-    snap: "frame",
-    ease: "none",
-    scrollTrigger: {
-      scrub: 0.5,
-      pin: "#sequence",
-      trigger: "#sequence",
-      end: "500%",
-      onUpdate: (self) => {
-        const currentFrame = Math.floor(self.progress * (frameCount - 1)) + 1;
-
-        preloadImages(currentFrame, currentFrame + batchSize);
-        requestAnimationFrame(render);
-
-        const line = document.querySelector("#nav-dots .line");
-        const nav = document.querySelector("#nav-dots");
-        if (line && nav && !gsap.isTweening(line)) {
-          const navHeight = nav.offsetHeight;
-          line.style.height = `${Math.min(self.progress * navHeight * (sections / (sections - 1)), navHeight)}px`;
-        }
-
-        if (!gsap.isTweening(window)) {
-          let newSectionIndex = -1;
-
-          // Використовуємо sectionFrames для визначення активної секції
-          document.querySelectorAll(".dot").forEach((dot, i) => {
-            const sectionFrame = i * sectionFrames; // Точно відповідає targetFrame при кліку
-
-            // Діапазон для класу active на точці
-            const isDotActive =
-              currentFrame >= sectionFrame &&
-              currentFrame < sectionFrame + activeFrameRange;
-
-            // Розширений діапазон для видимості панелі
-            const isPanelActive =
-              currentFrame >= sectionFrame &&
-              currentFrame < sectionFrame + panelActiveFrameRange;
-
-            // Оновлюємо клас active для точки
-            dot.classList.toggle("active", isDotActive);
-
-            // Викликаємо анімацію лише якщо стан панелі змінився
-            if (panelStates[i] !== isPanelActive) {
-              animateSection(i, isPanelActive);
-            }
-
-            if (isDotActive) {
-              newSectionIndex = i;
-            }
-          });
-
-          activeSectionIndex = newSectionIndex;
-        }
-      },
-    },
-  });
-};
-
-// Анімація лінії до dot
-function animateLineToDot(dot) {
-  const line = document.querySelector("#nav-dots .line");
-  const nav = document.querySelector("#nav-dots");
-  if (!line || !dot || !nav) return;
-
-  const navRect = nav.getBoundingClientRect();
-  const dotRect = dot.getBoundingClientRect();
-  const targetHeight = dotRect.top + dotRect.height / 2 - navRect.top;
-
-  gsap.to(line, {
-    height: targetHeight,
-    duration: 1,
-    ease: "power2.inOut",
-    overwrite: "auto",
-  });
-}
-
-// Навігація по точках
-document.querySelectorAll(".dot").forEach((dot) => {
-  dot.addEventListener("click", () => {
-    const section = parseInt(dot.dataset.section, 10);
-    const targetFrame = section * sectionFrames;
-
-    // Оновлюємо активну точку та панелі
-    updateActiveDot(section);
-    activeSectionIndex = section;
-
+  // Init scroll animation
+  const initAnimation = () => {
     gsap.to(imgSeq, {
-      frame: targetFrame,
-      duration: 1,
-      ease: "power2.inOut",
-      onUpdate: render,
-    });
+      frame: frameCount - 1,
+      snap: 'frame',
+      ease: 'none',
+      scrollTrigger: {
+        scrub: 0.5,
+        pin: '#sequence',
+        trigger: '#sequence',
+        end: '500%',
+        onUpdate: (self) => {
+          const currentFrame = Math.floor(self.progress * (frameCount - 1)) + 1;
+          preloadImages(currentFrame, currentFrame + batchSize); // Async, non-blocking
+          requestAnimationFrame(render);
 
-    gsap.to(window, {
-      scrollTo: {
-        y: (targetFrame / frameCount) * ScrollTrigger.maxScroll(window),
-      },
-      duration: 1,
-      ease: "power2.inOut",
-      onComplete: () => {
-        updateActiveDot(section);
+          if (line && nav && !gsap.isTweening(line)) {
+            const navHeight = nav.offsetHeight;
+            line.style.height = `${Math.min(self.progress * navHeight * lineMultiplier, navHeight)}px`;
+          }
+
+          if (!gsap.isTweening(window)) {
+            let newSectionIndex = -1;
+            dots.forEach((dot, i) => {
+              const sectionFrame = sectionStarts[i];
+              const isDotActive = currentFrame >= sectionFrame && currentFrame < sectionFrame + activeFrameRange;
+              const isPanelActive = currentFrame >= sectionFrame && currentFrame < sectionFrame + panelActiveFrameRange;
+
+              dot.classList.toggle('active', isDotActive);
+
+              if (panelStates[i] !== isPanelActive) {
+                animateSection(i, isPanelActive);
+              }
+
+              if (isDotActive) newSectionIndex = i;
+            });
+            activeSectionIndex = newSectionIndex;
+          }
+        },
       },
     });
+  };
 
-    animateLineToDot(dot);
+  // Animate line to dot position
+  function animateLineToDot(dot) {
+    if (!line || !dot || !nav) return;
+
+    const navRect = nav.getBoundingClientRect();
+    const dotRect = dot.getBoundingClientRect();
+    const targetHeight = dotRect.top + dotRect.height / 2 - navRect.top;
+
+    gsap.to(line, {
+      height: targetHeight,
+      duration: 1,
+      ease: 'power2.inOut',
+      overwrite: 'auto',
+    });
+  }
+
+  // Dot click handlers
+  dots.forEach((dot) => {
+    dot.addEventListener('click', () => {
+      const section = parseInt(dot.dataset.section, 10);
+      const targetFrame = sectionStarts[section];
+
+      updateActiveDot(section);
+      activeSectionIndex = section;
+
+      gsap.to(imgSeq, {
+        frame: targetFrame,
+        duration: 1,
+        ease: 'power2.inOut',
+        onUpdate: render,
+      });
+
+      gsap.to(window, {
+        scrollTo: {
+          y: (targetFrame / (frameCount - 1)) * (document.documentElement.scrollHeight - window.innerHeight),
+        },
+        duration: 1,
+        ease: 'power2.inOut',
+        onComplete: () => updateActiveDot(section),
+      });
+
+      animateLineToDot(dot);
+    });
   });
-});
 
-// Старт
-preloadImages(1, batchSize);
-initAnimation();
+  // Start
+  preloadImages(1, batchSize);
+  initAnimation();
+})();
