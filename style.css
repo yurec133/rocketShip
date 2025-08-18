@@ -92,6 +92,19 @@ body {
   }
 }
 
+/* Анімація пульсації */
+@keyframes pulseButton {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.7;
+  }
+}
+
 #nav-dots .line {
   position: absolute;
   width: 2px;
@@ -163,6 +176,78 @@ body {
   color: rgba(255, 255, 255, 0.7);
 }
 
+.header {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  background: rgba(0, 0, 0, 0.8);
+  padding: 10px 30px;
+  z-index: 100;
+}
+.header .container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.header .logo {
+  display: block;
+  max-width: 100%;
+}
+.burger {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 30px;
+  height: 22px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+.burger span {
+  display: block;
+  height: 4px;
+  width: 100%;
+  background: #fff;
+  border-radius: 2px;
+}
+
+.scroll-top {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: none;
+  color: #fff;
+  border: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-family: sans-serif;
+  transition: background 0.3s;
+  z-index: 90;
+}
+
+.scroll-top:hover {
+  opacity: 0.8;
+}
+
+.scroll-text {
+  display: block;
+  font-size: 30px;
+  margin-bottom: -12px;
+}
+
+.scroll-icon {
+  display: block;
+  animation: pulseButton 1.2s infinite ease-in-out;
+}
+
 @media (max-width: 1300px) {
   .panel {
     width: 100% !important;
@@ -189,9 +274,18 @@ body {
   .panel h2 {
     font-size: 60px;
   }
+  .header .logo {
+    width: 200px;
+  }
 }
 
 @media (max-width: 480px) {
+  .header {
+    padding: 8px 20px 8px 35px;
+  }
+  .header .container {
+    justify-content: left;
+  }
   #nav-dots {
     right: 20px;
   }
