@@ -47,9 +47,6 @@
   const panelStates = new Array(sections).fill(false);
   let dotCenters = [];
 
-  // Precompute line multiplier
-  const lineMultiplier = sections / (sections - 1);
-
   // Resize canvas and update dot centers
   const resizeCanvas = () => {
     canvas.width = window.innerWidth;
@@ -172,12 +169,10 @@
         y: "-25vh",
         scale: 0.95,
         rotation: -1,
-        filter: "blur(5px)",
         duration: 0.8,
         ease: "power3.in",
         onComplete: () => {
           panel.classList.remove("active");
-          gsap.set(panel, { filter: "blur(0px)" });
         },
       });
       gsap.to(children, {
@@ -331,7 +326,18 @@
       },
       duration: 1,
       ease: "power2.inOut",
-      onComplete: () => updateActiveDot(nextSection),
+      onComplete: () => {
+        updateActiveDot(nextSection);
+        if (nextSection === sections - 1) {
+          gsap.to(scrollButton, {
+            opacity: 0,
+            duration: 0.3,
+            onComplete: () => {
+              scrollButton.style.display = "none";
+            },
+          });
+        }
+      },
     });
 
     animateLineToDot(dots[nextSection]);
@@ -340,6 +346,18 @@
   // Detect scroll start/stop for scroll button visibility
   let scrollTimeout;
   window.addEventListener("scroll", () => {
+    // Only show scroll button if not on the last section
+    if (activeSectionIndex === sections - 1) {
+      gsap.to(scrollButton, {
+        opacity: 0,
+        duration: 0.3,
+        onComplete: () => {
+          scrollButton.style.display = "none";
+        },
+      });
+      return;
+    }
+
     gsap.to(scrollButton, {
       opacity: 0,
       duration: 0.3,
@@ -350,14 +368,17 @@
 
     clearTimeout(scrollTimeout);
     scrollTimeout = setTimeout(() => {
-      gsap.to(scrollButton, {
-        opacity: 1,
-        duration: 0.3,
-        onStart: () => {
-          scrollButton.style.display = "block";
-        },
-      });
-    }, 300); // Show after 300ms of no scrolling
+      // Only show scroll button if not on the last section
+      if (activeSectionIndex !== sections - 1) {
+        gsap.to(scrollButton, {
+          opacity: 1,
+          duration: 0.3,
+          onStart: () => {
+            scrollButton.style.display = "block";
+          },
+        });
+      }
+    }, 600); // Show after 600ms of no scrolling
   });
 
   // Intro animation

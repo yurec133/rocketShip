@@ -228,8 +228,6 @@ body {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-family: sans-serif;
-  transition: background 0.3s;
   z-index: 90;
   display: none;
   opacity: 0;
@@ -301,5 +299,8 @@ body {
   .panel h1,
   .panel h2 {
     font-size: 35px;
+  }
+  .scroll-text {
+    font-size: 20px;
   }
 }
