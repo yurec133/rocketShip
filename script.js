@@ -38,6 +38,10 @@
   const line = document.querySelector("#nav-dots .line");
   const nav = document.querySelector("#nav-dots");
   const scrollButton = document.getElementById("scrollTop");
+  const header = document.getElementById("header");
+  const burger = document.getElementById("burger-nav");
+  const offcanvasNav = document.getElementById("offcanvas-nav");
+
 
   // State
   const images = new Array(frameCount).fill(null);
@@ -46,6 +50,8 @@
   let activeSectionIndex = -1;
   const panelStates = new Array(sections).fill(false);
   let dotCenters = [];
+  let lastScrollTop = 0; // Track last scroll position
+  let isHeaderVisible = true; // Track header visibility state
 
   // Resize canvas and update dot centers
   const resizeCanvas = () => {
@@ -124,7 +130,9 @@
     }
 
     context.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
-    imgSeq.lastRenderedFrame = imgSeq.frame;
+    imgSeq
+
+      .lastRenderedFrame = imgSeq.frame;
   }
 
   // Animate panel show/hide
@@ -135,7 +143,7 @@
     panelStates[sectionIndex] = isActive;
     gsap.killTweensOf(panel);
 
-    const children = panel.querySelectorAll(".panel > *"); // Cache children once per call
+    const children = panel.querySelectorAll(".panel > *");
 
     if (isActive) {
       gsap.fromTo(
@@ -208,6 +216,28 @@
     return dotCenters[sections - 1];
   }
 
+  // Animate header show/hide
+  function animateHeader(show) {
+    if (show === isHeaderVisible) return;
+    isHeaderVisible = show;
+    gsap.killTweensOf(header);
+    if (show) {
+      gsap.to(header, {
+        y: 0,
+        opacity: 1,
+        duration: 0.5,
+        ease: "power2.out",
+      });
+    } else {
+      gsap.to(header, {
+        y: "-100%",
+        opacity: 0,
+        duration: 0.5,
+        ease: "power2.in",
+      });
+    }
+  }
+
   // Init scroll animation
   const initAnimation = () => {
     gsap.to(imgSeq, {
@@ -221,7 +251,7 @@
         end: "500%",
         onUpdate: (self) => {
           const currentFrame = Math.floor(self.progress * (frameCount - 1)) + 1;
-          preloadImages(currentFrame, currentFrame + batchSize); // Async, non-blocking
+          preloadImages(currentFrame, currentFrame + batchSize);
           requestAnimationFrame(render);
 
           if (line && nav && !gsap.isTweening(line)) {
@@ -248,6 +278,25 @@
               if (isDotActive) newSectionIndex = i;
             });
             activeSectionIndex = newSectionIndex;
+
+            // Hide scroll button on the last section
+            if (activeSectionIndex === sections - 1) {
+              gsap.to(scrollButton, {
+                opacity: 0,
+                duration: 0.3,
+                onComplete: () => {
+                  scrollButton.style.display = "none";
+                },
+              });
+            } else {
+              gsap.to(scrollButton, {
+                opacity: 1,
+                duration: 0.3,
+                onStart: () => {
+                  scrollButton.style.display = "block";
+                },
+              });
+            }
           }
         },
       },
@@ -304,7 +353,7 @@
   // Scroll button click handler
   scrollButton.addEventListener("click", () => {
     let nextSection = activeSectionIndex + 1;
-    if (nextSection >= sections) return; // Don't loop, or set to 0 if needed
+    if (nextSection >= sections) return;
 
     const targetFrame = sectionStarts[nextSection];
 
@@ -343,21 +392,66 @@
     animateLineToDot(dots[nextSection]);
   });
 
-  // Detect scroll start/stop for scroll button visibility
-  let scrollTimeout;
-  window.addEventListener("scroll", () => {
-    // Only show scroll button if not on the last section
-    if (activeSectionIndex === sections - 1) {
-      gsap.to(scrollButton, {
-        opacity: 0,
+
+  // Burger menu toggle and offcanvas navigation
+  burger.addEventListener("click", () => {
+    const isActive = burger.classList.contains("active");
+
+    if (isActive) {
+      // Close the offcanvas menu
+      burger.classList.remove("active");
+      gsap.to(offcanvasNav.querySelector(".offcanvas-bar"), {
+        left: "-250px",
         duration: 0.3,
+        ease: "power2.inOut",
         onComplete: () => {
-          scrollButton.style.display = "none";
+          offcanvasNav.classList.remove("open");
         },
       });
-      return;
+    } else {
+      // Open the offcanvas menu
+      burger.classList.add("active");
+      offcanvasNav.classList.add("open");
+      gsap.fromTo(
+        offcanvasNav.querySelector(".offcanvas-bar"),
+        { left: "-250px" },
+        { left: "0", duration: 0.3, ease: "power2.inOut" },
+      );
+    }
+  });
+
+// Close offcanvas when clicking the overlay
+  offcanvasNav.addEventListener("click", (e) => {
+    // Only close if clicking on the overlay, not the offcanvas-bar
+    if (e.target === offcanvasNav || e.target === offcanvasNav.querySelector(":before")) {
+      burger.classList.remove("active");
+      gsap.to(offcanvasNav.querySelector(".offcanvas-bar"), {
+        left: "-250px",
+        duration: 0.3,
+        ease: "power2.inOut",
+        onComplete: () => {
+          offcanvasNav.classList.remove("open");
+        },
+      });
+    }
+  });
+
+  // Detect scroll start/stop for scroll button and header visibility
+// Detect scroll start/stop for scroll button and header visibility
+  let scrollTimeout;
+  window.addEventListener("scroll", () => {
+    const currentScrollTop = window.scrollY || document.documentElement.scrollTop;
+    const isScrollingDown = currentScrollTop > lastScrollTop;
+
+    // Handle header visibility based on scroll direction
+    if (isScrollingDown && isHeaderVisible) {
+      animateHeader(false);
+    } else if (!isScrollingDown && !isHeaderVisible && currentScrollTop > 0) {
+      animateHeader(true);
     }
 
+    // Handle scroll button visibility
+    // Hide the button on scroll
     gsap.to(scrollButton, {
       opacity: 0,
       duration: 0.3,
@@ -366,10 +460,12 @@
       },
     });
 
+    // Clear any existing timeout
     clearTimeout(scrollTimeout);
-    scrollTimeout = setTimeout(() => {
-      // Only show scroll button if not on the last section
-      if (activeSectionIndex !== sections - 1) {
+
+    // If not in the last section, set a timeout to show the button after scrolling stops
+    if (activeSectionIndex !== sections - 1) {
+      scrollTimeout = setTimeout(() => {
         gsap.to(scrollButton, {
           opacity: 1,
           duration: 0.3,
@@ -377,11 +473,14 @@
             scrollButton.style.display = "block";
           },
         });
-      }
-    }, 600); // Show after 600ms of no scrolling
+      }, 800);
+    }
+
+    lastScrollTop = currentScrollTop <= 0 ? 0 : currentScrollTop; // Update last scroll position
   });
 
-  // Intro animation
+  // Intro animation with header slide-in
+// Intro animation with header slide-in
   const runIntro = () => {
     const dummy = { val: 0 };
     gsap.to(dummy, {
@@ -395,6 +494,14 @@
         render();
       },
       onComplete: () => {
+        // Slide in header after 3-second intro
+        gsap.to(header, {
+          y: 0,
+          opacity: 1,
+          duration: 0.8,
+          ease: "power2.out",
+        });
+
         // Select random artist
         const randomArtist = Math.floor(Math.random() * numberOfArtists);
         const startFrame1 = artistStarts[randomArtist];
@@ -412,7 +519,7 @@
           onStart: () => {
             imgSeq.frame = startFrame1 - 1;
             render();
-            // Show scroll button at the start of full video (31st frame effectively)
+            // Show scroll button
             gsap.to(scrollButton, {
               opacity: 1,
               duration: 0.5,

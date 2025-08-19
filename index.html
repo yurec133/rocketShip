@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Rocketship Music</title>
     <link rel="stylesheet" href="style.css" />
+    <link
+      rel="icon"
+      type="image/png"
+      href="images/favicons/favicon-96x96.png"
+    />
+    <link rel="icon" type="image/x-icon" href="images/favicons/favicon.ico" />
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/ScrollTrigger.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/ScrollToPlugin.min.js"></script>
@@ -30,7 +36,7 @@
         />
       </svg>
     </button>
-    <header class="header">
+    <header id="header" class="header">
       <div class="container">
         <img
           class="logo"
@@ -39,7 +45,7 @@
           height="64"
           alt="RocketShip"
         />
-        <div class="burger">
+        <div class="burger" id="burger-nav">
           <span></span>
           <span></span>
           <span></span>
@@ -116,6 +122,20 @@
       <div class="dot" data-section="4"><span>We Create Your Plan</span></div>
       <div class="dot" data-section="5"><span>Get Started</span></div>
       <div class="line"></div>
+    </div>
+    <div id="offcanvas-nav" class="offcanvas-overlay">
+      <div class="offcanvas-bar">
+        <ul>
+          <li>
+            <a href="https://rocketship.music/artist-investment/"
+              >Artist Investment</a
+            >
+          </li>
+          <li><a href="https://rocketship.music/launchpad/">Launchpad</a></li>
+          <li><a href="https://rocketship.music/about-us/">About Us</a></li>
+          <li><a href="https://rocketship.music/contact-us/">Contact Us</a></li>
+        </ul>
+      </div>
     </div>
     <script src="script.js"></script>
   </body>
