@@ -8,19 +8,36 @@
   const context = canvas.getContext("2d");
   const frameCount = 2191;
   const sections = 6;
+  const numberOfArtists = 10;
   const activeFrameRange = 100; // Range for dot active class
   const panelActiveFrameRange = 200; // Extended range for panels
   const batchSize = 1000;
 
   // Custom section starts (1-based frame indices)
   const sectionStarts = [1, 164, 637, 1135, 1397, 2191];
-  const progressPoints = sectionStarts.map((s) => (s - 1) / (frameCount - 1));
+
+  // Artists in home section (section 0)
+  const homeFrameCount = sectionStarts[1] - sectionStarts[0];
+  const artistFrameLength = Math.floor(homeFrameCount / numberOfArtists);
+  const artistStarts = Array.from(
+    { length: numberOfArtists },
+    (_, i) => sectionStarts[0] + i * artistFrameLength,
+  );
+
+  // Precompute intro frames: first 3 frames of each artist
+  const introFrames = [];
+  for (let i = 0; i < numberOfArtists; i++) {
+    introFrames.push(artistStarts[i]);
+    introFrames.push(artistStarts[i] + 1);
+    introFrames.push(artistStarts[i] + 2);
+  }
 
   // Cached elements
   const dots = document.querySelectorAll(".dot");
   const panels = document.querySelectorAll(".panel");
   const line = document.querySelector("#nav-dots .line");
   const nav = document.querySelector("#nav-dots");
+  const scrollButton = document.getElementById("scrollTop");
 
   // State
   const images = new Array(frameCount).fill(null);
@@ -29,6 +46,9 @@
   let activeSectionIndex = -1;
   const panelStates = new Array(sections).fill(false);
   let dotCenters = [];
+
+  // Precompute line multiplier
+  const lineMultiplier = sections / (sections - 1);
 
   // Resize canvas and update dot centers
   const resizeCanvas = () => {
@@ -181,6 +201,7 @@
 
   // Calculate line height based on progress
   function getLineHeight(progress) {
+    const progressPoints = sectionStarts.map((s) => (s - 1) / (frameCount - 1));
     for (let i = 0; i < sections - 1; i++) {
       if (progress >= progressPoints[i] && progress < progressPoints[i + 1]) {
         const frac =
@@ -264,7 +285,7 @@
       activeSectionIndex = section;
 
       gsap.to(imgSeq, {
-        frame: targetFrame - 1, // Adjust for 0-based imgSeq.frame
+        frame: targetFrame - 1,
         duration: 1,
         ease: "power2.inOut",
         onUpdate: render,
@@ -285,8 +306,123 @@
     });
   });
 
+  // Scroll button click handler
+  scrollButton.addEventListener("click", () => {
+    let nextSection = activeSectionIndex + 1;
+    if (nextSection >= sections) return; // Don't loop, or set to 0 if needed
+
+    const targetFrame = sectionStarts[nextSection];
+
+    updateActiveDot(nextSection);
+    activeSectionIndex = nextSection;
+
+    gsap.to(imgSeq, {
+      frame: targetFrame - 1,
+      duration: 1,
+      ease: "power2.inOut",
+      onUpdate: render,
+    });
+
+    gsap.to(window, {
+      scrollTo: {
+        y:
+          ((targetFrame - 1) / (frameCount - 1)) *
+          (document.documentElement.scrollHeight - window.innerHeight),
+      },
+      duration: 1,
+      ease: "power2.inOut",
+      onComplete: () => updateActiveDot(nextSection),
+    });
+
+    animateLineToDot(dots[nextSection]);
+  });
+
+  // Detect scroll start/stop for scroll button visibility
+  let scrollTimeout;
+  window.addEventListener("scroll", () => {
+    gsap.to(scrollButton, {
+      opacity: 0,
+      duration: 0.3,
+      onComplete: () => {
+        scrollButton.style.display = "none";
+      },
+    });
+
+    clearTimeout(scrollTimeout);
+    scrollTimeout = setTimeout(() => {
+      gsap.to(scrollButton, {
+        opacity: 1,
+        duration: 0.3,
+        onStart: () => {
+          scrollButton.style.display = "block";
+        },
+      });
+    }, 300); // Show after 300ms of no scrolling
+  });
+
+  // Intro animation
+  const runIntro = () => {
+    const dummy = { val: 0 };
+    gsap.to(dummy, {
+      val: 29,
+      duration: 3,
+      ease: "none",
+      snap: "val",
+      onUpdate: () => {
+        const frameIndex = Math.floor(dummy.val);
+        imgSeq.frame = introFrames[frameIndex] - 1;
+        render();
+      },
+      onComplete: () => {
+        // Select random artist
+        const randomArtist = Math.floor(Math.random() * numberOfArtists);
+        const startFrame1 = artistStarts[randomArtist];
+        const endFrame1 =
+          randomArtist < numberOfArtists - 1
+            ? artistStarts[randomArtist + 1] - 1
+            : sectionStarts[1] - 1;
+        const frameLength = endFrame1 - startFrame1 + 1;
+        const videoDuration = frameLength / 30; // 30 FPS
+
+        gsap.to(imgSeq, {
+          frame: endFrame1 - 1,
+          duration: videoDuration,
+          ease: "none",
+          onStart: () => {
+            imgSeq.frame = startFrame1 - 1;
+            render();
+            // Show scroll button at the start of full video (31st frame effectively)
+            gsap.to(scrollButton, {
+              opacity: 1,
+              duration: 0.5,
+              onStart: () => (scrollButton.style.display = "block"),
+            });
+          },
+          onUpdate: render,
+          onComplete: () => {
+            // Reset to home start
+            imgSeq.frame = 0;
+            render();
+            // Enable scrolling
+            document.body.classList.remove("no-scroll");
+            // Initialize scroll animation
+            initAnimation();
+            // Set initial section
+            activeSectionIndex = 0;
+            updateActiveDot(0);
+            animateSection(0, true);
+            line.style.height = `${dotCenters[0]}px`;
+          },
+        });
+      },
+    });
+  };
+
   // Start
+  document.body.classList.add("no-scroll");
   updateDotCenters();
-  preloadImages(1, batchSize);
-  initAnimation();
+  preloadImages(1, sectionStarts[1] - 1).then(() => {
+    runIntro();
+  });
+  preloadImages(sectionStarts[1], batchSize);
 })();

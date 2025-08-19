@@ -231,10 +231,12 @@ body {
   font-family: sans-serif;
   transition: background 0.3s;
   z-index: 90;
+  display: none;
+  opacity: 0;
 }
 
 .scroll-top:hover {
-  opacity: 0.8;
+  opacity: 0.8 !important;
 }
 
 .scroll-text {
