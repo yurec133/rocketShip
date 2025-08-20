@@ -9,6 +9,14 @@
     smoothTouch: 0.1,
     normalizeScroll: true,
   });
+
+  // Hide native scrollbar
+  document.body.style.overflow = "hidden";
+  document.documentElement.style.overflow = "hidden";
+  document.body.style.msOverflowStyle = "none"; // IE and Edge
+  document.body.style.scrollbarWidth = "none"; // Firefox
+  document.body.style.setProperty("::-webkit-scrollbar", "display: none"); // WebKit browsers
+
   // Constants
   const canvas = document.getElementById("sequence");
   const context = canvas.getContext("2d");
