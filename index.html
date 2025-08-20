@@ -13,29 +13,10 @@
     <link rel="icon" type="image/x-icon" href="images/favicons/favicon.ico" />
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/ScrollTrigger.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/ScrollSmoother.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/ScrollToPlugin.min.js"></script>
   </head>
   <body>
-    <canvas id="sequence"></canvas>
-    <button id="scrollTop" class="scroll-top">
-      <span class="scroll-text">Scroll</span>
-      <svg
-        class="scroll-icon"
-        width="72"
-        height="72"
-        viewBox="0 0 24 24"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <path
-          d="M6 9L12 15L18 9"
-          stroke="white"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        />
-      </svg>
-    </button>
     <header id="header" class="header">
       <div class="container">
         <img
@@ -52,6 +33,11 @@
         </div>
       </div>
     </header>
+    <div id="smooth-wrapper">
+      <div id="smooth-content">
+        <canvas id="sequence"></canvas>
+      </div>
+    </div>
     <div class="section-container">
       <section class="panel" data-section="0"></section>
       <section class="panel" data-section="1">
@@ -118,8 +104,12 @@
       <div class="dot" data-section="0"><span>Home</span></div>
       <div class="dot" data-section="1"><span>Find Your People</span></div>
       <div class="dot" data-section="2"><span>Submit Your Song</span></div>
-      <div class="dot" data-section="3"><span>We Analyze Your Song</span></div>
-      <div class="dot" data-section="4"><span>We Create Your Plan</span></div>
+      <div class="dot" data-section="3">
+        <span>We Analyze Your Song</span>
+      </div>
+      <div class="dot" data-section="4">
+        <span>We Create Your Plan</span>
+      </div>
       <div class="dot" data-section="5"><span>Get Started</span></div>
       <div class="line"></div>
     </div>
@@ -131,12 +121,35 @@
               >Artist Investment</a
             >
           </li>
-          <li><a href="https://rocketship.music/launchpad/">Launchpad</a></li>
+          <li>
+            <a href="https://rocketship.music/launchpad/">Launchpad</a>
+          </li>
           <li><a href="https://rocketship.music/about-us/">About Us</a></li>
-          <li><a href="https://rocketship.music/contact-us/">Contact Us</a></li>
+          <li>
+            <a href="https://rocketship.music/contact-us/">Contact Us</a>
+          </li>
         </ul>
       </div>
     </div>
+    <button id="scrollTop" class="scroll-top">
+      <span class="scroll-text">Scroll</span>
+      <svg
+        class="scroll-icon"
+        width="72"
+        height="72"
+        viewBox="0 0 24 24"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M6 9L12 15L18 9"
+          stroke="white"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </svg>
+    </button>
     <script src="script.js"></script>
   </body>
 </html>
