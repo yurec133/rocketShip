@@ -596,7 +596,7 @@
 
   // Use ScrollSmoother's scrollTrigger to handle scroll events
   ScrollTrigger.create({
-    onUpdate: (self) => {
+    onUpdate: () => {
       handleScroll();
     },
   });
