@@ -533,44 +533,29 @@
 
         // Select random artist
         const randomArtist = Math.floor(Math.random() * numberOfArtists);
-        const startFrame1 = artistStarts[randomArtist];
         const endFrame1 =
           randomArtist < numberOfArtists - 1
             ? artistStarts[randomArtist + 1] - 1
             : sectionStarts[1] - 1;
-        const frameLength = endFrame1 - startFrame1 + 1;
-        const videoDuration = frameLength / 30; // 30 FPS
 
-        gsap.to(imgSeq, {
-          frame: endFrame1 - 1,
-          duration: videoDuration,
-          ease: "none",
-          onStart: () => {
-            imgSeq.frame = startFrame1 - 1;
-            render();
-            // Show scroll button
-            gsap.to(scrollButton, {
-              opacity: 1,
-              duration: 0.5,
-              onStart: () => (scrollButton.style.display = "block"),
-            });
-          },
-          onUpdate: render,
-          onComplete: () => {
-            // Reset to home start
-            imgSeq.frame = 0;
-            render();
-            // Enable scrolling
+        // Stop at the last frame of the random artist
+        imgSeq.frame = endFrame1 - 1;
+        render();
 
-            // Initialize scroll animation
-            initAnimation();
-            // Set initial section
-            activeSectionIndex = 0;
-            updateActiveDot(0);
-            animateSection(0, true);
-            line.style.height = `${dotCenters[0]}px`;
-          },
+        // Show scroll button
+        gsap.to(scrollButton, {
+          opacity: 1,
+          duration: 0.5,
+          onStart: () => (scrollButton.style.display = "block"),
         });
+
+        // Initialize scroll animation
+        initAnimation();
+        // Set initial section
+        activeSectionIndex = 0;
+        updateActiveDot(0);
+        animateSection(0, true);
+        line.style.height = `${dotCenters[0]}px`;
       },
     });
   };
