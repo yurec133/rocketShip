@@ -26,6 +26,7 @@
   const activeFrameRange = 100; // Range for dot active class
   const panelActiveFrameRange = 200; // Extended range for panels
   const batchSize = 1000;
+  const snapThreshold = 500; // Діапазон у кадрах для ефекту "магніту"
 
   // Custom section starts (1-based frame indices)
   const sectionStarts = [1, 164, 637, 1135, 1397, 2191];
@@ -252,8 +253,80 @@
     }
   }
 
+  // Функція для підтягування до найближчої секції (ефект "магніту")
+  function snapToNearestSection(currentFrame) {
+    let closestSectionIndex = -1;
+    let minDistance = Infinity;
+
+    // Знайти найближчу секцію
+    sectionStarts.forEach((startFrame, index) => {
+      const distance = Math.abs(currentFrame - startFrame);
+      if (distance < minDistance && distance <= snapThreshold) {
+        minDistance = distance;
+        closestSectionIndex = index;
+      }
+    });
+
+    // Якщо знайдено близьку секцію і вона не є поточною, підтягнути до неї
+    if (
+      closestSectionIndex !== -1 &&
+      closestSectionIndex !== activeSectionIndex
+    ) {
+      console.log(
+        "Snapping to section:",
+        closestSectionIndex,
+        "Frame:",
+        sectionStarts[closestSectionIndex],
+      ); // Debug
+      const targetFrame = sectionStarts[closestSectionIndex];
+      const targetScroll =
+        ((targetFrame - 1) / (frameCount - 1)) *
+        (document.documentElement.scrollHeight - window.innerHeight);
+
+      // Синхронізована анімація кадру та прокрутки
+      const timeline = gsap.timeline({
+        onComplete: () => {
+          updateActiveDot(closestSectionIndex);
+          activeSectionIndex = closestSectionIndex;
+          animateLineToDot(dots[closestSectionIndex]);
+        },
+      });
+
+      // Анімація кадру
+      timeline.to(
+        imgSeq,
+        {
+          frame: targetFrame - 1,
+          duration: 0.5,
+          ease: "power2.inOut",
+          snap: "frame", // Округлення до цілого кадру
+          onUpdate: () => {
+            imgSeq.frame = Math.round(imgSeq.frame); // Забезпечити ціле значення
+            render();
+          },
+          overwrite: "auto",
+        },
+        0,
+      ); // Почати одночасно з прокруткою
+
+      // Анімація прокрутки
+      timeline.to(
+        smoother,
+        {
+          scrollTop: targetScroll,
+          duration: 0.5,
+          ease: "power2.inOut",
+          overwrite: "auto",
+        },
+        0,
+      ); // Почати одночасно з кадром
+    }
+  }
+
   // Init scroll animation
   const initAnimation = () => {
+    let snapTimeout; // Таймер для затримки "магніту"
+
     gsap.to(imgSeq, {
       frame: frameCount - 1,
       snap: "frame",
@@ -317,6 +390,14 @@
                 },
               });
             }
+
+            // Очистити попередній таймер "магніту"
+            clearTimeout(snapTimeout);
+
+            // Запустити "магніт" після зупинки скролінгу
+            snapTimeout = setTimeout(() => {
+              snapToNearestSection(currentFrame);
+            }, 300); // Затримка 300 мс
           }
         },
       },
@@ -458,6 +539,7 @@
 
   // Detect scroll start/stop for scroll button and header visibility
   let scrollTimeout;
+  let snapTimeout; // Додати таймер для "магніту"
   const handleScroll = () => {
     const currentScrollTop = smoother.scrollTop();
     const isScrollingDown = currentScrollTop > lastScrollTop;
@@ -470,15 +552,16 @@
     }
 
     // Hide scroll button immediately when scrolling
-    gsap.killTweensOf(scrollButton); // Stop any ongoing animations
+    gsap.killTweensOf(scrollButton);
     gsap.set(scrollButton, {
       opacity: 0,
       display: "none",
       overwrite: "auto",
     });
 
-    // Clear any existing timeout
+    // Clear any existing timeouts
     clearTimeout(scrollTimeout);
+    clearTimeout(snapTimeout);
 
     // Show scroll button after scroll stops, unless it's the last section
     scrollTimeout = setTimeout(() => {
@@ -494,9 +577,21 @@
       } else {
         console.log("Not showing scroll button: on last section"); // Debug
       }
+
+      // Викликати "магніт" після зупинки скролінгу
+      const instantProgress = clamp(
+        0,
+        1,
+        (smoother.scrollTop() - smoother.start) /
+          (smoother.end - smoother.start),
+      );
+      const currentFrame = Math.floor(instantProgress * (frameCount - 1)) + 1;
+      snapTimeout = setTimeout(() => {
+        snapToNearestSection(currentFrame);
+      }, 300);
     }, 300); // Delay of 300ms after scroll stops
 
-    lastScrollTop = currentScrollTop <= 0 ? 0 : currentScrollTop; // Update last scroll position
+    lastScrollTop = currentScrollTop <= 0 ? 0 : currentScrollTop;
   };
 
   // Use ScrollSmoother's scrollTrigger to handle scroll events
@@ -533,10 +628,12 @@
 
         // Select random artist
         const randomArtist = Math.floor(Math.random() * numberOfArtists);
+        console.log("Selected artist:", randomArtist); // Debug
         const endFrame1 =
           randomArtist < numberOfArtists - 1
             ? artistStarts[randomArtist + 1] - 1
             : sectionStarts[1] - 1;
+        console.log("End frame:", endFrame1); // Debug
 
         // Stop at the last frame of the random artist
         imgSeq.frame = endFrame1 - 1;
