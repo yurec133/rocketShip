@@ -1,8 +1,6 @@
 window.addEventListener("DOMContentLoaded", () => {
   (function () {
-    "use strict";
-
-    // Register plugins
+    "use strict"; // Register plugins
     gsap.registerPlugin(ScrollTrigger, ScrollSmoother, ScrollToPlugin);
 
     // ScrollSmoother setup
@@ -28,7 +26,7 @@ window.addEventListener("DOMContentLoaded", () => {
     const numberOfArtists = 10;
     const activeFrameRange = 40;
     const panelActiveFrameRange = 200;
-    const baseBatchSize = 300; // Base batch size, will be dynamic
+    const baseBatchSize = 600;
     const snapThreshold = 500;
     const scrollVelocityThreshold = 1000; // Pixels per second; above this = fast scroll, use lq
     const stopThreshold = 50; // If velocity below this and stopped, load hq
@@ -168,12 +166,11 @@ window.addEventListener("DOMContentLoaded", () => {
     // Determine quality based on factors
     function getQualityForFrame(frame, isPreload = false) {
       if (connectionType === "slow-2g" || connectionType === "2g") {
-        return "lq"; // Always low quality on slow connections
+        return "lq";
       }
-      if (isPreload && scrollVelocity > scrollVelocityThreshold) {
-        return "lq"; // Low quality for preloading during fast scroll
+      if (isPreload) {
+        return "lq";
       }
-      // For key frames or stopped: prefer hq
       return "hq";
     }
 
@@ -202,6 +199,8 @@ window.addEventListener("DOMContentLoaded", () => {
               };
             }),
           );
+        } else {
+          promises.push(Promise.resolve());
         }
       }
       await Promise.all(promises);
@@ -226,15 +225,32 @@ window.addEventListener("DOMContentLoaded", () => {
       if (imgSeq.frame === imgSeq.lastRenderedFrame) return;
 
       let img;
+      let quality = "hq";
+      let frameIndexToUse = frameIndex;
+
       if (images[frameIndex] && images[frameIndex]["hq"]) {
         img = images[frameIndex]["hq"];
-        imgSeq.currentQuality = "hq";
+        quality = "hq";
       } else if (images[frameIndex] && images[frameIndex]["lq"]) {
         img = images[frameIndex]["lq"];
-        imgSeq.currentQuality = "lq";
+        quality = "lq";
       } else {
-        return; // Not loaded yet
+        // Fallback to nearest loaded frame
+        let nearest = frameIndex;
+        while (!images[nearest] && nearest > 0) nearest--;
+        if (images[nearest]) {
+          img = images[nearest]["hq"] || images[nearest]["lq"];
+          quality = images[nearest]["hq"] ? "hq" : "lq";
+          console.warn(
+            `Fallback to frame ${nearest + 1} for ${frameIndex + 1}`,
+          );
+        } else {
+          return; // Or draw a loading spinner on canvas
+        }
+        frameIndexToUse = nearest;
       }
+
+      imgSeq.currentQuality = quality;
 
       context.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -255,7 +271,7 @@ window.addEventListener("DOMContentLoaded", () => {
       }
 
       context.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
-      imgSeq.lastRenderedFrame = imgSeq.frame;
+      imgSeq.lastRenderedFrame = frameIndex;
     }
 
     // Animate panel show/hide
@@ -491,6 +507,9 @@ window.addEventListener("DOMContentLoaded", () => {
               stopTimeout = setTimeout(() => {
                 upgradeToHQ(currentFrame);
               }, 200); // After 200ms of low velocity, upgrade
+            }
+            if (scrollVelocity < stopThreshold) {
+              upgradeToHQ(currentFrame + Math.floor(currentBatchSize / 2));
             }
 
             requestAnimationFrame(render);
@@ -835,6 +854,17 @@ window.addEventListener("DOMContentLoaded", () => {
           if (line && dotCenters[0]) {
             line.style.height = `${dotCenters[0]}px`;
           }
+          preloadImages(
+            sectionStarts[1],
+            sectionStarts[2] - 1,
+            getQualityForFrame(sectionStarts[1]),
+          ).then(() => {
+            preloadImages(
+              sectionStarts[2],
+              sectionStarts[3] - 1,
+              getQualityForFrame(sectionStarts[2]),
+            );
+          });
         },
       });
     };
