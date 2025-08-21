@@ -28,8 +28,11 @@ window.addEventListener("DOMContentLoaded", () => {
     const numberOfArtists = 10;
     const activeFrameRange = 40;
     const panelActiveFrameRange = 200;
-    const batchSize = 1000;
+    const baseBatchSize = 300; // Base batch size, will be dynamic
     const snapThreshold = 500;
+    const scrollVelocityThreshold = 1000; // Pixels per second; above this = fast scroll, use lq
+    const stopThreshold = 50; // If velocity below this and stopped, load hq
+    const neighborFramesToUpgrade = 50; // When stopped, upgrade hq for current frame +/- this many
 
     // Check canvas availability
     if (!canvas || !context) {
@@ -104,14 +107,31 @@ window.addEventListener("DOMContentLoaded", () => {
     }
 
     // State
-    const images = new Array(frameCount).fill(null);
-    const imgSeq = { frame: 0, lastRenderedFrame: -1 };
+    const images = {}; // Object to store images by frame and quality: images[frame][quality]
+    const imgSeq = { frame: 0, lastRenderedFrame: -1, currentQuality: "lq" };
     let lastLoadedFrame = 0;
     let activeSectionIndex = -1;
     const panelStates = new Array(sections).fill(false);
     let dotCenters = [];
     let lastScrollTop = 0;
     let isHeaderVisible = true;
+    let currentBatchSize = baseBatchSize;
+    let lastScrollTime = Date.now();
+    let scrollVelocity = 0;
+    let connectionType = "4g"; // Default to fast
+    let stopTimeout; // For detecting scroll stop
+
+    // Detect connection speed
+    const connection =
+      navigator.connection ||
+      navigator.mozConnection ||
+      navigator.webkitConnection;
+    if (connection) {
+      connectionType = connection.effectiveType || "4g";
+      connection.addEventListener("change", () => {
+        connectionType = connection.effectiveType || "4g";
+      });
+    }
 
     function clamp(min, max, value) {
       return Math.min(max, Math.max(min, value));
@@ -141,28 +161,43 @@ window.addEventListener("DOMContentLoaded", () => {
       updateDotCenters();
     });
 
-    // Frame URL generator
-    const currentFrame = (index) =>
-      `images/hq/${index.toString().padStart(4, "0")}.webp`;
+    // Frame URL generator with quality
+    const currentFrame = (index, quality = "hq") =>
+      `images/${quality}/${index.toString().padStart(4, "0")}.webp`;
 
-    // Async preload images in batch
-    const preloadImages = async (start, end) => {
+    // Determine quality based on factors
+    function getQualityForFrame(frame, isPreload = false) {
+      if (connectionType === "slow-2g" || connectionType === "2g") {
+        return "lq"; // Always low quality on slow connections
+      }
+      if (isPreload && scrollVelocity > scrollVelocityThreshold) {
+        return "lq"; // Low quality for preloading during fast scroll
+      }
+      // For key frames or stopped: prefer hq
+      return "hq";
+    }
+
+    // Async preload images in batch with quality
+    const preloadImages = async (start, end, quality) => {
       start = Math.max(1, start);
       end = Math.min(end, frameCount);
       const promises = [];
       for (let i = start; i <= end; i++) {
-        if (!images[i - 1]) {
+        if (!images[i - 1]) images[i - 1] = {};
+        if (!images[i - 1][quality]) {
           const img = new Image();
-          img.src = currentFrame(i);
+          img.src = currentFrame(i, quality);
           promises.push(
             new Promise((resolve, reject) => {
               img.onload = () => {
-                images[i - 1] = img;
+                images[i - 1][quality] = img;
                 if (i - 1 === imgSeq.frame) render();
                 resolve();
               };
               img.onerror = () => {
-                console.error(`Failed to load image ${i}`);
+                console.error(
+                  `Failed to load image ${i} at quality ${quality}`,
+                );
                 reject();
               };
             }),
@@ -173,12 +208,34 @@ window.addEventListener("DOMContentLoaded", () => {
       lastLoadedFrame = Math.max(lastLoadedFrame, end);
     };
 
-    // Render frame (only if changed and loaded)
-    function render() {
-      if (!images[imgSeq.frame] || imgSeq.frame === imgSeq.lastRenderedFrame)
-        return;
+    // Upgrade quality for a range of frames (e.g., when stopped)
+    const upgradeToHQ = async (centerFrame) => {
+      const start = Math.max(1, centerFrame - neighborFramesToUpgrade);
+      const end = Math.min(frameCount, centerFrame + neighborFramesToUpgrade);
+      await preloadImages(start, end, "hq");
+      // Re-render if current frame was upgraded
+      if (centerFrame - 1 === imgSeq.frame) {
+        imgSeq.currentQuality = "hq";
+        render();
+      }
+    };
 
-      const img = images[imgSeq.frame];
+    // Render frame (use best available quality, prefer hq if loaded)
+    function render() {
+      const frameIndex = imgSeq.frame;
+      if (imgSeq.frame === imgSeq.lastRenderedFrame) return;
+
+      let img;
+      if (images[frameIndex] && images[frameIndex]["hq"]) {
+        img = images[frameIndex]["hq"];
+        imgSeq.currentQuality = "hq";
+      } else if (images[frameIndex] && images[frameIndex]["lq"]) {
+        img = images[frameIndex]["lq"];
+        imgSeq.currentQuality = "lq";
+      } else {
+        return; // Not loaded yet
+      }
+
       context.clearRect(0, 0, canvas.width, canvas.height);
 
       const canvasRatio = canvas.width / canvas.height;
@@ -402,7 +459,40 @@ window.addEventListener("DOMContentLoaded", () => {
             );
             const currentFrame =
               Math.floor(instantProgress * (frameCount - 1)) + 1;
-            preloadImages(currentFrame, currentFrame + batchSize);
+
+            // Calculate scroll velocity
+            const now = Date.now();
+            const timeDelta = now - lastScrollTime;
+            if (timeDelta > 0) {
+              const scrollDelta = Math.abs(self.scroll() - lastScrollTop);
+              scrollVelocity = (scrollDelta / timeDelta) * 1000; // pixels per second
+              lastScrollTime = now;
+            }
+
+            // Dynamic batch size: larger batch for faster scroll to preload more
+            currentBatchSize = baseBatchSize + Math.floor(scrollVelocity / 10); // e.g., add 100 for every 1000 px/s
+            currentBatchSize = clamp(
+              baseBatchSize,
+              baseBatchSize * 2,
+              currentBatchSize,
+            );
+
+            // Determine quality for preload
+            const preloadQuality = getQualityForFrame(currentFrame, true);
+            preloadImages(
+              currentFrame,
+              currentFrame + currentBatchSize,
+              preloadQuality,
+            );
+
+            // If slow or stopped, upgrade to hq around key frames
+            clearTimeout(stopTimeout);
+            if (scrollVelocity < stopThreshold) {
+              stopTimeout = setTimeout(() => {
+                upgradeToHQ(currentFrame);
+              }, 200); // After 200ms of low velocity, upgrade
+            }
+
             requestAnimationFrame(render);
 
             if (line && nav && !gsap.isTweening(line)) {
@@ -419,7 +509,11 @@ window.addEventListener("DOMContentLoaded", () => {
                     currentFrame < sectionFrame + activeFrameRange;
                   const isPanelActive =
                     currentFrame >= sectionFrame &&
-                    currentFrame < Math.min(sectionFrame + panelActiveFrameRange, sectionEnds[i]);
+                    currentFrame <
+                      Math.min(
+                        sectionFrame + panelActiveFrameRange,
+                        sectionEnds[i],
+                      );
 
                   dot.classList.toggle("active", isDotActive);
 
@@ -746,9 +840,13 @@ window.addEventListener("DOMContentLoaded", () => {
     };
 
     updateDotCenters();
-    preloadImages(1, sectionStarts[1] - 1).then(() => {
+    preloadImages(1, sectionStarts[1] - 1, getQualityForFrame(1)).then(() => {
       runIntro();
     });
-    preloadImages(sectionStarts[1], batchSize);
+    preloadImages(
+      sectionStarts[1],
+      currentBatchSize,
+      getQualityForFrame(sectionStarts[1], true),
+    );
   })();
 });
