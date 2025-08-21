@@ -22,16 +22,24 @@ window.addEventListener("DOMContentLoaded", () => {
 
     // Constants
     const canvas = document.getElementById("sequence");
-    const context = canvas.getContext("2d");
+    const context = canvas ? canvas.getContext("2d") : null;
     const frameCount = 2191;
     const sections = 6;
     const numberOfArtists = 10;
-    const activeFrameRange = 10; // Range for dot active class
-    const panelActiveFrameRange = 10; // Extended range for panels
+    const activeFrameRange = 10;
+    const panelActiveFrameRange = 10;
     const batchSize = 1000;
-    const snapThreshold = 600; // Діапазон у кадрах для ефекту "магніту"
+    const snapThreshold = 600;
 
-    // Custom section starts (1-based frame indices)
+    // Check canvas availability
+    if (!canvas || !context) {
+      console.error(
+        "Canvas or context not found. Ensure #sequence element exists.",
+      );
+      return;
+    }
+
+    // Custom section starts (0-based frame indices)
     const sectionStarts = [0, 134, 569, 1113, 1332, 2191];
 
     // Artists in home section (section 0)
@@ -50,7 +58,7 @@ window.addEventListener("DOMContentLoaded", () => {
       introFrames.push(artistStarts[i] + 2);
     }
 
-    // Cached elements
+    // Cached elements with checks
     const dots = document.querySelectorAll(".dot");
     const panels = document.querySelectorAll(".panel");
     const line = document.querySelector("#nav-dots .line");
@@ -60,6 +68,39 @@ window.addEventListener("DOMContentLoaded", () => {
     const burger = document.getElementById("burger-nav");
     const offcanvasNav = document.getElementById("offcanvas-nav");
 
+    // Check critical elements
+    if (dots.length === 0) {
+      console.warn(
+        "No .dot elements found. Check your HTML for .dot selectors.",
+      );
+    }
+    if (panels.length === 0) {
+      console.warn(
+        "No .panel elements found. Check your HTML for .panel selectors.",
+      );
+    }
+    if (!nav) {
+      console.warn("#nav-dots element not found.");
+    }
+    if (!line) {
+      console.warn("#nav-dots .line element not found.");
+    }
+    if (!scrollButton) {
+      console.warn("#scrollTop element not found.");
+    }
+    if (!header) {
+      console.warn("#header element not found.");
+    }
+    if (!burger) {
+      console.warn("#burger-nav element not found.");
+    }
+    if (!offcanvasNav) {
+      console.warn("#offcanvas-nav element not found.");
+    }
+    if (offcanvasNav && !offcanvasNav.querySelector(".offcanvas-bar")) {
+      console.warn(".offcanvas-bar not found inside #offcanvas-nav.");
+    }
+
     // State
     const images = new Array(frameCount).fill(null);
     const imgSeq = { frame: 0, lastRenderedFrame: -1 };
@@ -67,8 +108,8 @@ window.addEventListener("DOMContentLoaded", () => {
     let activeSectionIndex = -1;
     const panelStates = new Array(sections).fill(false);
     let dotCenters = [];
-    let lastScrollTop = 0; // Track last scroll position
-    let isHeaderVisible = true; // Track header visibility state
+    let lastScrollTop = 0;
+    let isHeaderVisible = true;
 
     function clamp(min, max, value) {
       return Math.min(max, Math.max(min, value));
@@ -81,6 +122,10 @@ window.addEventListener("DOMContentLoaded", () => {
     };
 
     const updateDotCenters = () => {
+      if (!nav || dots.length === 0) {
+        console.warn("Cannot update dot centers: nav or dots missing.");
+        return;
+      }
       const navRect = nav.getBoundingClientRect();
       dotCenters = Array.from(dots).map((dot) => {
         const dotRect = dot.getBoundingClientRect();
@@ -111,7 +156,7 @@ window.addEventListener("DOMContentLoaded", () => {
             new Promise((resolve, reject) => {
               img.onload = () => {
                 images[i - 1] = img;
-                if (i - 1 === imgSeq.frame) render(); // Render if current frame loaded
+                if (i - 1 === imgSeq.frame) render();
                 resolve();
               };
               img.onerror = () => {
@@ -177,18 +222,20 @@ window.addEventListener("DOMContentLoaded", () => {
             onStart: () => panel.classList.add("active"),
           },
         );
-        gsap.fromTo(
-          children,
-          { opacity: 0, y: "20vh" },
-          {
-            opacity: 1,
-            y: 0,
-            duration: 0.6,
-            stagger: 0.1,
-            ease: "power2.out",
-            delay: 0.2,
-          },
-        );
+        if (children.length > 0) {
+          gsap.fromTo(
+            children,
+            { opacity: 0, y: "20vh" },
+            {
+              opacity: 1,
+              y: 0,
+              duration: 0.6,
+              stagger: 0.1,
+              ease: "power2.out",
+              delay: 0.2,
+            },
+          );
+        }
       } else {
         gsap.to(panel, {
           opacity: 0,
@@ -201,18 +248,22 @@ window.addEventListener("DOMContentLoaded", () => {
             panel.classList.remove("active");
           },
         });
-        gsap.to(children, {
-          opacity: 0,
-          y: "-20vh",
-          duration: 0.6,
-          stagger: 0.1,
-          ease: "power2.in",
-        });
+        if (children.length > 0) {
+          gsap.to(children, {
+            opacity: 0,
+            y: "-20vh",
+            duration: 0.6,
+            stagger: 0.1,
+            ease: "power2.in",
+          });
+        }
       }
     }
 
     // Update active dots and panels (for click)
     function updateActiveDot(sectionIndex) {
+      if (dots.length === 0 || sectionIndex < 0 || sectionIndex >= sections)
+        return;
       dots.forEach((dot, i) => {
         const isActive = i === sectionIndex;
         dot.classList.toggle("active", isActive);
@@ -222,6 +273,10 @@ window.addEventListener("DOMContentLoaded", () => {
 
     // Calculate line height based on progress
     function getLineHeight(progress) {
+      if (!nav || dots.length === 0) {
+        console.warn("Cannot calculate line height: nav or dots missing.");
+        return 0;
+      }
       const progressPoints = sectionStarts.map(
         (s) => (s - 1) / (frameCount - 1),
       );
@@ -233,12 +288,12 @@ window.addEventListener("DOMContentLoaded", () => {
           return dotCenters[i] + frac * (dotCenters[i + 1] - dotCenters[i]);
         }
       }
-      return dotCenters[sections - 1];
+      return dotCenters[sections - 1] || 0;
     }
 
     // Animate header show/hide
     function animateHeader(show) {
-      if (show === isHeaderVisible) return;
+      if (!header || show === isHeaderVisible) return;
       isHeaderVisible = show;
       gsap.killTweensOf(header);
       if (show) {
@@ -258,12 +313,11 @@ window.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    // Функція для підтягування до найближчої секції (ефект "магніту")
+    // Snap to nearest section
     function snapToNearestSection(currentFrame) {
       let closestSectionIndex = -1;
       let minDistance = Infinity;
 
-      // Знайти найближчу секцію
       sectionStarts.forEach((startFrame, index) => {
         const distance = Math.abs(currentFrame - startFrame);
         if (distance < minDistance && distance <= snapThreshold) {
@@ -272,49 +326,41 @@ window.addEventListener("DOMContentLoaded", () => {
         }
       });
 
-      // Якщо знайдено близьку секцію і вона не є поточною, підтягнути до неї
       if (
         closestSectionIndex !== -1 &&
         closestSectionIndex !== activeSectionIndex
       ) {
-        console.log(
-          "Snapping to section:",
-          closestSectionIndex,
-          "Frame:",
-          sectionStarts[closestSectionIndex],
-        ); // Debug
         const targetFrame = sectionStarts[closestSectionIndex];
         const targetScroll =
           ((targetFrame - 1) / (frameCount - 1)) *
           (document.documentElement.scrollHeight - window.innerHeight);
 
-        // Синхронізована анімація кадру та прокрутки
         const timeline = gsap.timeline({
           onComplete: () => {
             updateActiveDot(closestSectionIndex);
             activeSectionIndex = closestSectionIndex;
-            animateLineToDot(dots[closestSectionIndex]);
+            if (dots[closestSectionIndex]) {
+              animateLineToDot(dots[closestSectionIndex]);
+            }
           },
         });
 
-        // Анімація кадру
         timeline.to(
           imgSeq,
           {
             frame: targetFrame - 1,
             duration: 0.5,
             ease: "power2.inOut",
-            snap: "frame", // Округлення до цілого кадру
+            snap: "frame",
             onUpdate: () => {
-              imgSeq.frame = Math.round(imgSeq.frame); // Забезпечити ціле значення
+              imgSeq.frame = Math.round(imgSeq.frame);
               render();
             },
             overwrite: "auto",
           },
           0,
-        ); // Почати одночасно з прокруткою
+        );
 
-        // Анімація прокрутки
         timeline.to(
           smoother,
           {
@@ -324,13 +370,18 @@ window.addEventListener("DOMContentLoaded", () => {
             overwrite: "auto",
           },
           0,
-        ); // Почати одночасно з кадром
+        );
       }
     }
 
     // Init scroll animation
     const initAnimation = () => {
-      let snapTimeout; // Таймер для затримки "магніту"
+      if (!canvas) {
+        console.error("Cannot initialize animation: #sequence canvas missing.");
+        return;
+      }
+
+      let snapTimeout;
 
       gsap.to(imgSeq, {
         frame: frameCount - 1,
@@ -358,51 +409,51 @@ window.addEventListener("DOMContentLoaded", () => {
 
             if (!gsap.isTweening(smoother)) {
               let newSectionIndex = -1;
-              dots.forEach((dot, i) => {
-                const sectionFrame = sectionStarts[i];
-                const isDotActive =
-                  currentFrame >= sectionFrame &&
-                  currentFrame < sectionFrame + activeFrameRange;
-                const isPanelActive =
-                  currentFrame >= sectionFrame &&
-                  currentFrame < sectionFrame + panelActiveFrameRange;
+              if (dots.length > 0) {
+                dots.forEach((dot, i) => {
+                  const sectionFrame = sectionStarts[i];
+                  const isDotActive =
+                    currentFrame >= sectionFrame &&
+                    currentFrame < sectionFrame + activeFrameRange;
+                  const isPanelActive =
+                    currentFrame >= sectionFrame &&
+                    currentFrame < sectionFrame + panelActiveFrameRange;
 
-                dot.classList.toggle("active", isDotActive);
+                  dot.classList.toggle("active", isDotActive);
 
-                if (panelStates[i] !== isPanelActive) {
-                  animateSection(i, isPanelActive);
-                }
+                  if (panelStates[i] !== isPanelActive) {
+                    animateSection(i, isPanelActive);
+                  }
 
-                if (isDotActive) newSectionIndex = i;
-              });
-              activeSectionIndex = newSectionIndex;
-
-              // Hide scroll button on the last section
-              if (activeSectionIndex === sections - 1) {
-                gsap.to(scrollButton, {
-                  opacity: 0,
-                  duration: 0.3,
-                  onComplete: () => {
-                    scrollButton.style.display = "none";
-                  },
-                });
-              } else {
-                gsap.to(scrollButton, {
-                  opacity: 1,
-                  duration: 0.3,
-                  onStart: () => {
-                    scrollButton.style.display = "block";
-                  },
+                  if (isDotActive) newSectionIndex = i;
                 });
               }
+              activeSectionIndex = newSectionIndex;
 
-              // Очистити попередній таймер "магніту"
+              if (scrollButton) {
+                if (activeSectionIndex === sections - 1) {
+                  gsap.to(scrollButton, {
+                    opacity: 0,
+                    duration: 0.3,
+                    onComplete: () => {
+                      scrollButton.style.display = "none";
+                    },
+                  });
+                } else {
+                  gsap.to(scrollButton, {
+                    opacity: 1,
+                    duration: 0.3,
+                    onStart: () => {
+                      scrollButton.style.display = "block";
+                    },
+                  });
+                }
+              }
+
               clearTimeout(snapTimeout);
-
-              // Запустити "магніт" після зупинки скролінгу
               snapTimeout = setTimeout(() => {
                 snapToNearestSection(currentFrame);
-              }, 300); // Затримка 300 мс
+              }, 300);
             }
           },
         },
@@ -411,7 +462,10 @@ window.addEventListener("DOMContentLoaded", () => {
 
     // Animate line to dot position
     function animateLineToDot(dot) {
-      if (!line || !dot || !nav) return;
+      if (!line || !dot || !nav) {
+        console.warn("Cannot animate line: line, dot, or nav missing.");
+        return;
+      }
 
       const navRect = nav.getBoundingClientRect();
       const dotRect = dot.getBoundingClientRect();
@@ -426,16 +480,56 @@ window.addEventListener("DOMContentLoaded", () => {
     }
 
     // Dot click handlers
-    dots.forEach((dot) => {
-      dot.addEventListener("click", () => {
-        const section = parseInt(dot.dataset.section, 10);
-        const targetFrame = sectionStarts[section];
+    if (dots.length > 0) {
+      dots.forEach((dot, index) => {
+        dot.addEventListener("click", () => {
+          const section = parseInt(dot.dataset.section, 10);
+          if (isNaN(section) || section < 0 || section >= sections) {
+            console.warn(
+              `Invalid data-section for dot ${index}: ${dot.dataset.section}`,
+            );
+            return;
+          }
+          const targetFrame = sectionStarts[section];
+          const targetScroll =
+            ((targetFrame - 1) / (frameCount - 1)) *
+            (document.documentElement.scrollHeight - window.innerHeight);
+
+          updateActiveDot(section);
+          activeSectionIndex = section;
+
+          gsap.to(imgSeq, {
+            frame: targetFrame - 1,
+            duration: 1,
+            ease: "power2.inOut",
+            onUpdate: render,
+          });
+
+          gsap.to(smoother, {
+            scrollTop: targetScroll,
+            duration: 1,
+            ease: "power2.inOut",
+            onComplete: () => updateActiveDot(section),
+          });
+
+          animateLineToDot(dot);
+        });
+      });
+    }
+
+    // Scroll button click handler
+    if (scrollButton) {
+      scrollButton.addEventListener("click", () => {
+        let nextSection = activeSectionIndex + 1;
+        if (nextSection >= sections) return;
+
+        const targetFrame = sectionStarts[nextSection];
         const targetScroll =
           ((targetFrame - 1) / (frameCount - 1)) *
           (document.documentElement.scrollHeight - window.innerHeight);
 
-        updateActiveDot(section);
-        activeSectionIndex = section;
+        updateActiveDot(nextSection);
+        activeSectionIndex = nextSection;
 
         gsap.to(imgSeq, {
           frame: targetFrame - 1,
@@ -448,129 +542,112 @@ window.addEventListener("DOMContentLoaded", () => {
           scrollTop: targetScroll,
           duration: 1,
           ease: "power2.inOut",
-          onComplete: () => updateActiveDot(section),
+          onComplete: () => {
+            updateActiveDot(nextSection);
+            if (nextSection === sections - 1) {
+              gsap.to(scrollButton, {
+                opacity: 0,
+                duration: 0.3,
+                onComplete: () => {
+                  scrollButton.style.display = "none";
+                },
+              });
+            }
+          },
         });
 
-        animateLineToDot(dot);
+        if (dots[nextSection]) {
+          animateLineToDot(dots[nextSection]);
+        }
       });
-    });
-
-    // Scroll button click handler
-    scrollButton.addEventListener("click", () => {
-      let nextSection = activeSectionIndex + 1;
-      if (nextSection >= sections) return;
-
-      const targetFrame = sectionStarts[nextSection];
-      const targetScroll =
-        ((targetFrame - 1) / (frameCount - 1)) *
-        (document.documentElement.scrollHeight - window.innerHeight);
-
-      updateActiveDot(nextSection);
-      activeSectionIndex = nextSection;
-
-      gsap.to(imgSeq, {
-        frame: targetFrame - 1,
-        duration: 1,
-        ease: "power2.inOut",
-        onUpdate: render,
-      });
-
-      gsap.to(smoother, {
-        scrollTop: targetScroll,
-        duration: 1,
-        ease: "power2.inOut",
-        onComplete: () => {
-          updateActiveDot(nextSection);
-          if (nextSection === sections - 1) {
-            gsap.to(scrollButton, {
-              opacity: 0,
-              duration: 0.3,
-              onComplete: () => {
-                scrollButton.style.display = "none";
-              },
-            });
-          }
-        },
-      });
-
-      animateLineToDot(dots[nextSection]);
-    });
+    }
 
     // Burger menu toggle and offcanvas navigation
-    burger.addEventListener("click", () => {
-      const isActive = burger.classList.contains("active");
+    if (burger && offcanvasNav) {
+      burger.addEventListener("click", () => {
+        const isActive = burger.classList.contains("active");
+        const offcanvasBar = offcanvasNav.querySelector(".offcanvas-bar");
 
-      if (isActive) {
-        // Close the offcanvas menu
-        burger.classList.remove("active");
-        gsap.to(offcanvasNav.querySelector(".offcanvas-bar"), {
-          left: "-250px",
-          duration: 0.3,
-          ease: "power2.inOut",
-          onComplete: () => {
-            offcanvasNav.classList.remove("open");
-          },
-        });
-      } else {
-        // Open the offcanvas menu
-        burger.classList.add("active");
-        offcanvasNav.classList.add("open");
-        gsap.fromTo(
-          offcanvasNav.querySelector(".offcanvas-bar"),
-          { left: "-250px" },
-          { left: "0", duration: 0.3, ease: "power2.inOut" },
-        );
-      }
-    });
+        if (!offcanvasBar) {
+          console.warn(".offcanvas-bar not found for burger menu.");
+          return;
+        }
 
-    // Close offcanvas when clicking the overlay
-    offcanvasNav.addEventListener("click", (e) => {
-      // Only close if clicking on the overlay, not the offcanvas-bar
-      if (
-        e.target === offcanvasNav ||
-        e.target === offcanvasNav.querySelector(":before")
-      ) {
-        burger.classList.remove("active");
-        gsap.to(offcanvasNav.querySelector(".offcanvas-bar"), {
-          left: "-250px",
-          duration: 0.3,
-          ease: "power2.inOut",
-          onComplete: () => {
-            offcanvasNav.classList.remove("open");
-          },
-        });
-      }
-    });
+        if (isActive) {
+          burger.classList.remove("active");
+          gsap.to(offcanvasBar, {
+            left: "-250px",
+            duration: 0.3,
+            ease: "power2.inOut",
+            onComplete: () => {
+              offcanvasNav.classList.remove("open");
+            },
+          });
+        } else {
+          burger.classList.add("active");
+          offcanvasNav.classList.add("open");
+          gsap.fromTo(
+            offcanvasBar,
+            { left: "-250px" },
+            { left: "0", duration: 0.3, ease: "power2.inOut" },
+          );
+        }
+      });
+
+      offcanvasNav.addEventListener("click", (e) => {
+        const offcanvasBar = offcanvasNav.querySelector(".offcanvas-bar");
+        if (!offcanvasBar) return;
+
+        if (
+          e.target === offcanvasNav ||
+          e.target === offcanvasNav.querySelector(":before")
+        ) {
+          burger.classList.remove("active");
+          gsap.to(offcanvasBar, {
+            left: "-250px",
+            duration: 0.3,
+            ease: "power2.inOut",
+            onComplete: () => {
+              offcanvasNav.classList.remove("open");
+            },
+          });
+        }
+      });
+    }
 
     // Detect scroll start/stop for scroll button and header visibility
     let scrollTimeout;
-    let snapTimeout; // Додати таймер для "магніту"
+    let snapTimeout;
     const handleScroll = () => {
       const currentScrollTop = smoother.scrollTop();
       const isScrollingDown = currentScrollTop > lastScrollTop;
 
-      // Handle header visibility based on scroll direction
-      if (isScrollingDown && isHeaderVisible) {
-        animateHeader(false);
-      } else if (!isScrollingDown && !isHeaderVisible && currentScrollTop > 0) {
-        animateHeader(true);
+      if (header) {
+        if (isScrollingDown && isHeaderVisible) {
+          animateHeader(false);
+        } else if (
+          !isScrollingDown &&
+          !isHeaderVisible &&
+          currentScrollTop > 0
+        ) {
+          animateHeader(true);
+        }
       }
 
-      // Hide scroll button immediately when scrolling
-      gsap.killTweensOf(scrollButton);
-      gsap.set(scrollButton, {
-        opacity: 0,
-        display: "none",
-        overwrite: "auto",
-      });
+      if (scrollButton) {
+        gsap.killTweensOf(scrollButton);
+        gsap.set(scrollButton, {
+          opacity: 0,
+          display: "none",
+          overwrite: "auto",
+        });
+      }
 
-      // Clear any existing timeouts
       clearTimeout(scrollTimeout);
       clearTimeout(snapTimeout);
 
-      // Show scroll button after scroll stops, unless it's the last section
       scrollTimeout = setTimeout(() => {
-        if (activeSectionIndex !== sections - 1) {
+        if (scrollButton && activeSectionIndex !== sections - 1) {
           gsap.to(scrollButton, {
             opacity: 1,
             duration: 0.3,
@@ -580,33 +657,30 @@ window.addEventListener("DOMContentLoaded", () => {
             },
           });
         } else {
-          console.log("Not showing scroll button: on last section"); // Debug
+          console.log("Not showing scroll button: on last section");
         }
 
-        // Викликати "магніт" після зупинки скролінгу
         const instantProgress = clamp(
           0,
           1,
-          (smoother.scrollTop() - smoother.start) /
-            (smoother.end - smoother.start),
+          smoother.scrollTop() /
+            (document.documentElement.scrollHeight - window.innerHeight),
         );
         const currentFrame = Math.floor(instantProgress * (frameCount - 1)) + 1;
         snapTimeout = setTimeout(() => {
           snapToNearestSection(currentFrame);
         }, 300);
-      }, 300); // Delay of 300ms after scroll stops
+      }, 300);
 
       lastScrollTop = currentScrollTop <= 0 ? 0 : currentScrollTop;
     };
 
-    // Use ScrollSmoother's scrollTrigger to handle scroll events
     ScrollTrigger.create({
       onUpdate: () => {
         handleScroll();
       },
     });
 
-    // Fallback: Use window scroll event
     window.addEventListener("scroll", handleScroll);
 
     // Intro animation with header slide-in
@@ -623,48 +697,48 @@ window.addEventListener("DOMContentLoaded", () => {
           render();
         },
         onComplete: () => {
-          // Slide in header after 3-second intro
-          gsap.to(header, {
-            y: 0,
-            opacity: 1,
-            duration: 0.8,
-            ease: "power2.out",
-          });
+          if (header) {
+            gsap.to(header, {
+              y: 0,
+              opacity: 1,
+              duration: 0.8,
+              ease: "power2.out",
+            });
+          }
 
-          gsap.to(nav, {
-            x: "-80px",
-            opacity: 1,
-            duration: 0.8,
-            ease: "power2.out",
-          });
+          if (nav) {
+            gsap.to(nav, {
+              x: "-80px",
+              opacity: 1,
+              duration: 0.8,
+              ease: "power2.out",
+            });
+          }
 
-          // Select random artist
           const randomArtist = Math.floor(Math.random() * numberOfArtists);
-          // console.log("Selected artist:", randomArtist); // Debug
           const endFrame1 =
             randomArtist < numberOfArtists - 1
               ? artistStarts[randomArtist + 1] - 1
               : sectionStarts[1] - 1;
-          // console.log("End frame:", endFrame1); // Debug
 
-          // Stop at the last frame of the random artist
           imgSeq.frame = endFrame1 - 1;
           render();
 
-          // Show scroll button
-          gsap.to(scrollButton, {
-            opacity: 1,
-            duration: 0.5,
-            onStart: () => (scrollButton.style.display = "block"),
-          });
+          if (scrollButton) {
+            gsap.to(scrollButton, {
+              opacity: 1,
+              duration: 0.5,
+              onStart: () => (scrollButton.style.display = "block"),
+            });
+          }
 
-          // Initialize scroll animation
           initAnimation();
-          // Set initial section
           activeSectionIndex = 0;
           updateActiveDot(0);
           animateSection(0, true);
-          line.style.height = `${dotCenters[0]}px`;
+          if (line && dotCenters[0]) {
+            line.style.height = `${dotCenters[0]}px`;
+          }
         },
       });
     };
