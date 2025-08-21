@@ -23,13 +23,13 @@
   const frameCount = 2191;
   const sections = 6;
   const numberOfArtists = 10;
-  const activeFrameRange = 100; // Range for dot active class
-  const panelActiveFrameRange = 200; // Extended range for panels
+  const activeFrameRange = 10; // Range for dot active class
+  const panelActiveFrameRange = 10; // Extended range for panels
   const batchSize = 1000;
-  const snapThreshold = 500; // Діапазон у кадрах для ефекту "магніту"
+  const snapThreshold = 600; // Діапазон у кадрах для ефекту "магніту"
 
   // Custom section starts (1-based frame indices)
-  const sectionStarts = [1, 164, 637, 1135, 1397, 2191];
+  const sectionStarts = [0, 134, 569, 1113, 1332, 2191];
 
   // Artists in home section (section 0)
   const homeFrameCount = sectionStarts[1] - sectionStarts[0];
@@ -93,7 +93,7 @@
 
   // Frame URL generator
   const currentFrame = (index) =>
-    `images/lq/${index.toString().padStart(4, "0")}.webp`;
+    `images/hq/${index.toString().padStart(4, "0")}.webp`;
 
   // Async preload images in batch
   const preloadImages = async (start, end) => {
@@ -621,6 +621,13 @@
         // Slide in header after 3-second intro
         gsap.to(header, {
           y: 0,
+          opacity: 1,
+          duration: 0.8,
+          ease: "power2.out",
+        });
+
+        gsap.to(nav, {
+          x: '-80px',
           opacity: 1,
           duration: 0.8,
           ease: "power2.out",
