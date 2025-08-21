@@ -32,6 +32,41 @@ body::-webkit-scrollbar {
   max-width: 100%;
 }
 
+#blurLayer {
+  --x: 0px;
+  --y: 0px;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  backdrop-filter: blur(800px);
+  mask-image: radial-gradient(
+    circle 100px at var(--x, 0px) var(--y, 0px),
+    black 0%,
+    transparent 100%
+  );
+  -webkit-mask-image: radial-gradient(
+    circle 100px at var(--x, 0px) var(--y, 0px),
+    black 0%,
+    transparent 100%
+  );
+  z-index: 3;
+}
+
+#oilCanvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  display: block;
+  z-index: 5;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+
 #nav-dots {
   position: fixed;
   top: 50%;

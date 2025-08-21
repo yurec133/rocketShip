@@ -26,10 +26,10 @@ window.addEventListener("DOMContentLoaded", () => {
     const frameCount = 2191;
     const sections = 6;
     const numberOfArtists = 10;
-    const activeFrameRange = 10;
-    const panelActiveFrameRange = 10;
+    const activeFrameRange = 40;
+    const panelActiveFrameRange = 200;
     const batchSize = 1000;
-    const snapThreshold = 600;
+    const snapThreshold = 500;
 
     // Check canvas availability
     if (!canvas || !context) {
@@ -40,7 +40,9 @@ window.addEventListener("DOMContentLoaded", () => {
     }
 
     // Custom section starts (0-based frame indices)
-    const sectionStarts = [0, 134, 569, 1113, 1332, 2191];
+    const sectionStarts = [1, 135, 570, 1114, 1333, 2191];
+
+    const sectionEnds = sectionStarts.slice(1).concat(frameCount + 1);
 
     // Artists in home section (section 0)
     const homeFrameCount = sectionStarts[1] - sectionStarts[0];
@@ -417,7 +419,7 @@ window.addEventListener("DOMContentLoaded", () => {
                     currentFrame < sectionFrame + activeFrameRange;
                   const isPanelActive =
                     currentFrame >= sectionFrame &&
-                    currentFrame < sectionFrame + panelActiveFrameRange;
+                    currentFrame < Math.min(sectionFrame + panelActiveFrameRange, sectionEnds[i]);
 
                   dot.classList.toggle("active", isDotActive);
 
