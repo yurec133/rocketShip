@@ -1,6 +1,11 @@
 window.addEventListener("DOMContentLoaded", () => {
   (function () {
-    "use strict"; // Register plugins
+    "use strict";
+    // Ensure GSAP and plugins are available
+    if (typeof gsap === "undefined" || !gsap.registerPlugin) {
+      console.error("GSAP or its plugins are not loaded. Ensure gsap.min.js, ScrollTrigger.min.js, ScrollSmoother.min.js, and ScrollToPlugin.min.js are included.");
+      return;
+    }
     gsap.registerPlugin(ScrollTrigger, ScrollSmoother, ScrollToPlugin);
 
     // ScrollSmoother setup
@@ -28,21 +33,23 @@ window.addEventListener("DOMContentLoaded", () => {
     const panelActiveFrameRange = 200;
     const baseBatchSize = 600;
     const snapThreshold = 500;
-    const scrollVelocityThreshold = 1000; // Pixels per second; above this = fast scroll, use lq
-    const stopThreshold = 50; // If velocity below this and stopped, load hq
-    const neighborFramesToUpgrade = 50; // When stopped, upgrade hq for current frame +/- this many
+    const scrollVelocityThreshold = 1000; // Pixels per second
+    const stopThreshold = 50; // If velocity below this, load hq
+    const neighborFramesToUpgrade = 50; // Upgrade hq for current frame +/- this many
+    const bufferSizeDefault = 50; // Default buffer size (±50 frames)
+    const bufferSizeFast = 20; // Reduced buffer for fast scrolling
+    const bufferSizeStopped = 100; // Expanded buffer when stopped
+    const initialPreload = 250; // Initial preload of first N LQ frames
+    const throttleDelay = 1000 / 30; // 30fps throttle for rendering
 
     // Check canvas availability
     if (!canvas || !context) {
-      console.error(
-        "Canvas or context not found. Ensure #sequence element exists.",
-      );
+      console.error("Canvas or context not found. Ensure #sequence element exists.");
       return;
     }
 
     // Custom section starts (0-based frame indices)
     const sectionStarts = [1, 135, 570, 1114, 1333, 2191];
-
     const sectionEnds = sectionStarts.slice(1).concat(frameCount + 1);
 
     // Artists in home section (section 0)
@@ -72,40 +79,20 @@ window.addEventListener("DOMContentLoaded", () => {
     const offcanvasNav = document.getElementById("offcanvas-nav");
 
     // Check critical elements
-    if (dots.length === 0) {
-      console.warn(
-        "No .dot elements found. Check your HTML for .dot selectors.",
-      );
-    }
-    if (panels.length === 0) {
-      console.warn(
-        "No .panel elements found. Check your HTML for .panel selectors.",
-      );
-    }
-    if (!nav) {
-      console.warn("#nav-dots element not found.");
-    }
-    if (!line) {
-      console.warn("#nav-dots .line element not found.");
-    }
-    if (!scrollButton) {
-      console.warn("#scrollTop element not found.");
-    }
-    if (!header) {
-      console.warn("#header element not found.");
-    }
-    if (!burger) {
-      console.warn("#burger-nav element not found.");
-    }
-    if (!offcanvasNav) {
-      console.warn("#offcanvas-nav element not found.");
-    }
+    if (dots.length === 0) console.warn("No .dot elements found.");
+    if (panels.length === 0) console.warn("No .panel elements found.");
+    if (!nav) console.warn("#nav-dots element not found.");
+    if (!line) console.warn("#nav-dots .line element not found.");
+    if (!scrollButton) console.warn("#scrollTop element not found.");
+    if (!header) console.warn("#header element not found.");
+    if (!burger) console.warn("#burger-nav element not found.");
+    if (!offcanvasNav) console.warn("#offcanvas-nav element not found.");
     if (offcanvasNav && !offcanvasNav.querySelector(".offcanvas-bar")) {
       console.warn(".offcanvas-bar not found inside #offcanvas-nav.");
     }
 
     // State
-    const images = {}; // Object to store images by frame and quality: images[frame][quality]
+    const images = {};
     const imgSeq = { frame: 0, lastRenderedFrame: -1, currentQuality: "lq" };
     let lastLoadedFrame = 0;
     let activeSectionIndex = -1;
@@ -116,14 +103,14 @@ window.addEventListener("DOMContentLoaded", () => {
     let currentBatchSize = baseBatchSize;
     let lastScrollTime = Date.now();
     let scrollVelocity = 0;
-    let connectionType = "4g"; // Default to fast
-    let stopTimeout; // For detecting scroll stop
+    let connectionType = "4g";
+    let stopTimeout;
+    let currentBufferSize = bufferSizeDefault;
+    let lastRenderTime = 0;
+    const loadingFrames = new Set(); // Track frames being loaded
 
     // Detect connection speed
-    const connection =
-      navigator.connection ||
-      navigator.mozConnection ||
-      navigator.webkitConnection;
+    const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
     if (connection) {
       connectionType = connection.effectiveType || "4g";
       connection.addEventListener("change", () => {
@@ -165,69 +152,89 @@ window.addEventListener("DOMContentLoaded", () => {
 
     // Determine quality based on factors
     function getQualityForFrame(frame, isPreload = false) {
-      if (connectionType === "slow-2g" || connectionType === "2g") {
-        return "lq";
-      }
-      if (isPreload) {
-        return "lq";
-      }
-      return "hq";
+      if (connectionType === "slow-2g" || connectionType === "2g") return "lq";
+      return isPreload ? "lq" : "hq";
     }
 
-    // Async preload images in batch with quality
-    const preloadImages = async (start, end, quality) => {
+    // Clean cache to remove frames outside the buffer
+    function cleanCache(currentFrame) {
+      const minFrameIndex = Math.max(0, currentFrame - 1 - currentBufferSize);
+      const maxFrameIndex = Math.min(frameCount - 1, currentFrame - 1 + currentBufferSize);
+      Object.keys(images).forEach((key) => {
+        const k = parseInt(key);
+        if ((k < minFrameIndex || k > maxFrameIndex) && !loadingFrames.has(k)) {
+          delete images[k];
+        }
+      });
+    }
+
+    // Async preload images with prioritization
+    const preloadImages = async (start, end, quality, center = null) => {
       start = Math.max(1, start);
       end = Math.min(end, frameCount);
-      const promises = [];
+      let framesToLoad = [];
       for (let i = start; i <= end; i++) {
-        if (!images[i - 1]) images[i - 1] = {};
+        if (!images[i - 1]) images[i - 1] = {}; // Initialize object
         if (!images[i - 1][quality]) {
-          const img = new Image();
-          img.src = currentFrame(i, quality);
-          promises.push(
-            new Promise((resolve, reject) => {
-              img.onload = () => {
-                images[i - 1][quality] = img;
-                if (i - 1 === imgSeq.frame) render();
-                resolve();
-              };
-              img.onerror = () => {
-                console.error(
-                  `Failed to load image ${i} at quality ${quality}`,
-                );
-                reject();
-              };
-            }),
-          );
-        } else {
-          promises.push(Promise.resolve());
+          framesToLoad.push(i);
         }
       }
+
+      // Prioritize by distance to center if provided
+      if (center !== null) {
+        framesToLoad.sort((a, b) => Math.abs(a - center) - Math.abs(b - center));
+      }
+
+      const promises = framesToLoad.map((i) => {
+        return new Promise((resolve) => {
+          if (!images[i - 1]) images[i - 1] = {}; // Double-check initialization
+          loadingFrames.add(i - 1); // Mark frame as being loaded
+          const img = new Image();
+          img.src = currentFrame(i, quality);
+          img.onload = () => {
+            if (!images[i - 1]) images[i - 1] = {}; // Ensure object exists
+            images[i - 1][quality] = img;
+            loadingFrames.delete(i - 1); // Remove from loading set
+            if (i - 1 === imgSeq.frame) render();
+            resolve();
+          };
+          img.onerror = () => {
+            console.warn(`Failed to load image ${i} at quality ${quality}`);
+            loadingFrames.delete(i - 1); // Remove from loading set
+            resolve(); // Continue despite error
+          };
+        });
+      });
+
       await Promise.all(promises);
       lastLoadedFrame = Math.max(lastLoadedFrame, end);
     };
 
-    // Upgrade quality for a range of frames (e.g., when stopped)
+    // Upgrade quality for a range of frames
     const upgradeToHQ = async (centerFrame) => {
       const start = Math.max(1, centerFrame - neighborFramesToUpgrade);
       const end = Math.min(frameCount, centerFrame + neighborFramesToUpgrade);
-      await preloadImages(start, end, "hq");
-      // Re-render if current frame was upgraded
+      await preloadImages(start, end, "hq", centerFrame);
       if (centerFrame - 1 === imgSeq.frame) {
         imgSeq.currentQuality = "hq";
         render();
       }
     };
 
-    // Render frame (use best available quality, prefer hq if loaded)
+    // Render frame with robust fallback
     function render() {
+      const now = Date.now();
+      if (now - lastRenderTime < throttleDelay) return; // Throttle rendering
+      lastRenderTime = now;
+
       const frameIndex = imgSeq.frame;
-      if (imgSeq.frame === imgSeq.lastRenderedFrame) return;
+      if (frameIndex === imgSeq.lastRenderedFrame) return;
 
       let img;
       let quality = "hq";
       let frameIndexToUse = frameIndex;
 
+      // Try current frame
       if (images[frameIndex] && images[frameIndex]["hq"]) {
         img = images[frameIndex]["hq"];
         quality = "hq";
@@ -235,23 +242,62 @@ window.addEventListener("DOMContentLoaded", () => {
         img = images[frameIndex]["lq"];
         quality = "lq";
       } else {
-        // Fallback to nearest loaded frame
+        // Search for nearest loaded frame (forward and backward)
         let nearest = frameIndex;
-        while (!images[nearest] && nearest > 0) nearest--;
-        if (images[nearest]) {
-          img = images[nearest]["hq"] || images[nearest]["lq"];
-          quality = images[nearest]["hq"] ? "hq" : "lq";
-          console.warn(
-            `Fallback to frame ${nearest + 1} for ${frameIndex + 1}`,
-          );
-        } else {
-          return; // Or draw a loading spinner on canvas
+        let found = false;
+        for (let i = 0; i <= currentBufferSize; i++) {
+          // Check forward
+          if (frameIndex + i < frameCount && images[frameIndex + i]) {
+            if (images[frameIndex + i]["hq"]) {
+              img = images[frameIndex + i]["hq"];
+              quality = "hq";
+              nearest = frameIndex + i;
+              found = true;
+              break;
+            } else if (images[frameIndex + i]["lq"]) {
+              img = images[frameIndex + i]["lq"];
+              quality = "lq";
+              nearest = frameIndex + i;
+              found = true;
+              break;
+            }
+          }
+          // Check backward
+          if (frameIndex - i >= 0 && images[frameIndex - i]) {
+            if (images[frameIndex - i]["hq"]) {
+              img = images[frameIndex - i]["hq"];
+              quality = "hq";
+              nearest = frameIndex - i;
+              found = true;
+              break;
+            } else if (images[frameIndex - i]["lq"]) {
+              img = images[frameIndex - i]["lq"];
+              quality = "lq";
+              nearest = frameIndex - i;
+              found = true;
+              break;
+            }
+          }
         }
+
+        if (!found) {
+          // No image available, draw a placeholder
+          context.clearRect(0, 0, canvas.width, canvas.height);
+          context.fillStyle = "#000";
+          context.fillRect(0, 0, canvas.width, canvas.height);
+          context.fillStyle = "#fff";
+          context.font = "20px Arial";
+          context.textAlign = "center";
+          context.fillText("Loading...", canvas.width / 2, canvas.height / 2);
+          imgSeq.lastRenderedFrame = frameIndex;
+          return;
+        }
+
         frameIndexToUse = nearest;
+        console.warn(`Fallback to frame ${nearest + 1} for ${frameIndex + 1}`);
       }
 
       imgSeq.currentQuality = quality;
-
       context.clearRect(0, 0, canvas.width, canvas.height);
 
       const canvasRatio = canvas.width / canvas.height;
@@ -335,10 +381,9 @@ window.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    // Update active dots and panels (for click)
+    // Update active dots and panels
     function updateActiveDot(sectionIndex) {
-      if (dots.length === 0 || sectionIndex < 0 || sectionIndex >= sections)
-        return;
+      if (dots.length === 0 || sectionIndex < 0 || sectionIndex >= sections) return;
       dots.forEach((dot, i) => {
         const isActive = i === sectionIndex;
         dot.classList.toggle("active", isActive);
@@ -352,14 +397,10 @@ window.addEventListener("DOMContentLoaded", () => {
         console.warn("Cannot calculate line height: nav or dots missing.");
         return 0;
       }
-      const progressPoints = sectionStarts.map(
-        (s) => (s - 1) / (frameCount - 1),
-      );
+      const progressPoints = sectionStarts.map((s) => (s - 1) / (frameCount - 1));
       for (let i = 0; i < sections - 1; i++) {
         if (progress >= progressPoints[i] && progress < progressPoints[i + 1]) {
-          const frac =
-            (progress - progressPoints[i]) /
-            (progressPoints[i + 1] - progressPoints[i]);
+          const frac = (progress - progressPoints[i]) / (progressPoints[i + 1] - progressPoints[i]);
           return dotCenters[i] + frac * (dotCenters[i + 1] - dotCenters[i]);
         }
       }
@@ -401,14 +442,9 @@ window.addEventListener("DOMContentLoaded", () => {
         }
       });
 
-      if (
-        closestSectionIndex !== -1 &&
-        closestSectionIndex !== activeSectionIndex
-      ) {
+      if (closestSectionIndex !== -1 && closestSectionIndex !== activeSectionIndex) {
         const targetFrame = sectionStarts[closestSectionIndex];
-        const targetScroll =
-          ((targetFrame - 1) / (frameCount - 1)) *
-          (document.documentElement.scrollHeight - window.innerHeight);
+        const targetScroll = ((targetFrame - 1) / (frameCount - 1)) * (document.documentElement.scrollHeight - window.innerHeight);
 
         const timeline = gsap.timeline({
           onComplete: () => {
@@ -468,48 +504,35 @@ window.addEventListener("DOMContentLoaded", () => {
           trigger: "#sequence",
           end: "500%",
           onUpdate: (self) => {
-            const instantProgress = clamp(
-              0,
-              1,
-              (self.scroll() - self.start) / (self.end - self.start),
-            );
-            const currentFrame =
-              Math.floor(instantProgress * (frameCount - 1)) + 1;
+            const instantProgress = clamp(0, 1, (self.scroll() - self.start) / (self.end - self.start));
+            const currentFrame = Math.floor(instantProgress * (frameCount - 1)) + 1;
 
             // Calculate scroll velocity
             const now = Date.now();
             const timeDelta = now - lastScrollTime;
             if (timeDelta > 0) {
               const scrollDelta = Math.abs(self.scroll() - lastScrollTop);
-              scrollVelocity = (scrollDelta / timeDelta) * 1000; // pixels per second
+              scrollVelocity = (scrollDelta / timeDelta) * 1000;
               lastScrollTime = now;
             }
 
-            // Dynamic batch size: larger batch for faster scroll to preload more
-            currentBatchSize = baseBatchSize + Math.floor(scrollVelocity / 10); // e.g., add 100 for every 1000 px/s
-            currentBatchSize = clamp(
-              baseBatchSize,
-              baseBatchSize * 2,
-              currentBatchSize,
-            );
+            // Dynamic buffer size
+            currentBufferSize = scrollVelocity > scrollVelocityThreshold ? bufferSizeFast : scrollVelocity < stopThreshold ? bufferSizeStopped : bufferSizeDefault;
 
-            // Determine quality for preload
-            const preloadQuality = getQualityForFrame(currentFrame, true);
-            preloadImages(
-              currentFrame,
-              currentFrame + currentBatchSize,
-              preloadQuality,
-            );
+            // Manage buffer
+            cleanCache(currentFrame);
+            const bufferStart = Math.max(1, currentFrame - currentBufferSize);
+            const bufferEnd = Math.min(frameCount, currentFrame + currentBufferSize);
+            preloadImages(bufferStart, bufferEnd, "lq", currentFrame).then(() => {
+              preloadImages(bufferStart, bufferEnd, "hq", currentFrame);
+            });
 
-            // If slow or stopped, upgrade to hq around key frames
+            // Upgrade to HQ when stopped
             clearTimeout(stopTimeout);
             if (scrollVelocity < stopThreshold) {
               stopTimeout = setTimeout(() => {
                 upgradeToHQ(currentFrame);
-              }, 200); // After 200ms of low velocity, upgrade
-            }
-            if (scrollVelocity < stopThreshold) {
-              upgradeToHQ(currentFrame + Math.floor(currentBatchSize / 2));
+              }, 200);
             }
 
             requestAnimationFrame(render);
@@ -523,23 +546,13 @@ window.addEventListener("DOMContentLoaded", () => {
               if (dots.length > 0) {
                 dots.forEach((dot, i) => {
                   const sectionFrame = sectionStarts[i];
-                  const isDotActive =
-                    currentFrame >= sectionFrame &&
-                    currentFrame < sectionFrame + activeFrameRange;
-                  const isPanelActive =
-                    currentFrame >= sectionFrame &&
-                    currentFrame <
-                      Math.min(
-                        sectionFrame + panelActiveFrameRange,
-                        sectionEnds[i],
-                      );
+                  const isDotActive = currentFrame >= sectionFrame && currentFrame < sectionFrame + activeFrameRange;
+                  const isPanelActive = currentFrame >= sectionFrame && currentFrame < Math.min(sectionFrame + panelActiveFrameRange, sectionEnds[i]);
 
                   dot.classList.toggle("active", isDotActive);
-
                   if (panelStates[i] !== isPanelActive) {
                     animateSection(i, isPanelActive);
                   }
-
                   if (isDotActive) newSectionIndex = i;
                 });
               }
@@ -600,15 +613,11 @@ window.addEventListener("DOMContentLoaded", () => {
         dot.addEventListener("click", () => {
           const section = parseInt(dot.dataset.section, 10);
           if (isNaN(section) || section < 0 || section >= sections) {
-            console.warn(
-              `Invalid data-section for dot ${index}: ${dot.dataset.section}`,
-            );
+            console.warn(`Invalid data-section for dot ${index}: ${dot.dataset.section}`);
             return;
           }
           const targetFrame = sectionStarts[section];
-          const targetScroll =
-            ((targetFrame - 1) / (frameCount - 1)) *
-            (document.documentElement.scrollHeight - window.innerHeight);
+          const targetScroll = ((targetFrame - 1) / (frameCount - 1)) * (document.documentElement.scrollHeight - window.innerHeight);
 
           updateActiveDot(section);
           activeSectionIndex = section;
@@ -639,9 +648,7 @@ window.addEventListener("DOMContentLoaded", () => {
         if (nextSection >= sections) return;
 
         const targetFrame = sectionStarts[nextSection];
-        const targetScroll =
-          ((targetFrame - 1) / (frameCount - 1)) *
-          (document.documentElement.scrollHeight - window.innerHeight);
+        const targetScroll = ((targetFrame - 1) / (frameCount - 1)) * (document.documentElement.scrollHeight - window.innerHeight);
 
         updateActiveDot(nextSection);
         activeSectionIndex = nextSection;
@@ -713,10 +720,7 @@ window.addEventListener("DOMContentLoaded", () => {
         const offcanvasBar = offcanvasNav.querySelector(".offcanvas-bar");
         if (!offcanvasBar) return;
 
-        if (
-          e.target === offcanvasNav ||
-          e.target === offcanvasNav.querySelector(":before")
-        ) {
+        if (e.target === offcanvasNav || e.target === offcanvasNav.querySelector(":before")) {
           burger.classList.remove("active");
           gsap.to(offcanvasBar, {
             left: "-250px",
@@ -730,7 +734,7 @@ window.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    // Detect scroll start/stop for scroll button and header visibility
+    // Detect scroll start/stop
     let scrollTimeout;
     let snapTimeout;
     const handleScroll = () => {
@@ -740,11 +744,7 @@ window.addEventListener("DOMContentLoaded", () => {
       if (header) {
         if (isScrollingDown && isHeaderVisible) {
           animateHeader(false);
-        } else if (
-          !isScrollingDown &&
-          !isHeaderVisible &&
-          currentScrollTop > 0
-        ) {
+        } else if (!isScrollingDown && !isHeaderVisible && currentScrollTop > 0) {
           animateHeader(true);
         }
       }
@@ -775,12 +775,7 @@ window.addEventListener("DOMContentLoaded", () => {
           console.log("Not showing scroll button: on last section");
         }
 
-        const instantProgress = clamp(
-          0,
-          1,
-          smoother.scrollTop() /
-            (document.documentElement.scrollHeight - window.innerHeight),
-        );
+        const instantProgress = clamp(0, 1, smoother.scrollTop() / (document.documentElement.scrollHeight - window.innerHeight));
         const currentFrame = Math.floor(instantProgress * (frameCount - 1)) + 1;
         snapTimeout = setTimeout(() => {
           snapToNearestSection(currentFrame);
@@ -791,14 +786,12 @@ window.addEventListener("DOMContentLoaded", () => {
     };
 
     ScrollTrigger.create({
-      onUpdate: () => {
-        handleScroll();
-      },
+      onUpdate: handleScroll,
     });
 
     window.addEventListener("scroll", handleScroll);
 
-    // Intro animation with header slide-in
+    // Intro animation
     const runIntro = () => {
       const dummy = { val: 0 };
       gsap.to(dummy, {
@@ -831,10 +824,7 @@ window.addEventListener("DOMContentLoaded", () => {
           }
 
           const randomArtist = Math.floor(Math.random() * numberOfArtists);
-          const endFrame1 =
-            randomArtist < numberOfArtists - 1
-              ? artistStarts[randomArtist + 1] - 1
-              : sectionStarts[1] - 1;
+          const endFrame1 = randomArtist < numberOfArtists - 1 ? artistStarts[randomArtist + 1] - 1 : sectionStarts[1] - 1;
 
           imgSeq.frame = endFrame1 - 1;
           render();
@@ -854,29 +844,17 @@ window.addEventListener("DOMContentLoaded", () => {
           if (line && dotCenters[0]) {
             line.style.height = `${dotCenters[0]}px`;
           }
-          preloadImages(
-            sectionStarts[1],
-            sectionStarts[2] - 1,
-            getQualityForFrame(sectionStarts[1]),
-          ).then(() => {
-            preloadImages(
-              sectionStarts[2],
-              sectionStarts[3] - 1,
-              getQualityForFrame(sectionStarts[2]),
-            );
+          preloadImages(sectionStarts[1], sectionStarts[2] - 1, getQualityForFrame(sectionStarts[1])).then(() => {
+            preloadImages(sectionStarts[2], sectionStarts[3] - 1, getQualityForFrame(sectionStarts[2]));
           });
         },
       });
     };
 
     updateDotCenters();
-    preloadImages(1, sectionStarts[1] - 1, getQualityForFrame(1)).then(() => {
+    preloadImages(1, initialPreload, "lq").then(() => {
       runIntro();
     });
-    preloadImages(
-      sectionStarts[1],
-      currentBatchSize,
-      getQualityForFrame(sectionStarts[1], true),
-    );
+    preloadImages(initialPreload + 1, initialPreload + currentBatchSize, getQualityForFrame(initialPreload + 1, true));
   })();
 });
