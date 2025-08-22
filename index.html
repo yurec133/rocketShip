@@ -16,11 +16,14 @@
     <script src="js/ScrollToPlugin.min.js"></script>
   </head>
   <body>
+    <div id="loader" role="status" aria-live="polite" aria-label="Loading">
+      <div class="spinner" aria-hidden="true"></div>
+    </div>
     <header id="header" class="header">
       <div class="container">
         <img
           class="logo"
-          src="images/icons/logo.svg"
+          src="images/logo.svg"
           width="347"
           height="64"
           alt="RocketShip"
@@ -34,7 +37,22 @@
     </header>
     <div id="smooth-wrapper">
       <div id="smooth-content">
-        <canvas id="sequence"></canvas>
+        <video
+          id="sequenceVideo"
+          preload="auto"
+          playsinline
+          muted
+          disablepictureinpicture
+          controlslist="nodownload noplaybackrate noremoteplayback"
+          poster="images/poster.webp"
+        >
+          <source
+            src="video/sequence-lq.mp4"
+            type="video/mp4"
+            media="(max-width: 1024px)"
+          />
+          <source src="video/sequence-hq.mp4" type="video/mp4" />
+        </video>
       </div>
     </div>
     <div class="section-container">
@@ -151,8 +169,7 @@
     </button>
     <canvas id="oilCanvas"></canvas>
     <div id="blurLayer"></div>
-
-    <script src="js/script.js?v=1.0.4"></script>
-<!--    <script src="js/cursorTrail.js"></script>-->
+    <script src="js/script.js?v=1.0.5"></script>
+    <!--    <script src="js/cursorTrail.js"></script>-->
   </body>
 </html>
