@@ -9,11 +9,17 @@ window.addEventListener("DOMContentLoaded", () => {
     }
     gsap.registerPlugin(ScrollTrigger, ScrollSmoother, ScrollToPlugin);
 
+    // ---- Detect Mobile Device
+    const isMobile =
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        navigator.userAgent,
+      );
+
     // ---- ScrollSmoother
     const smoother = ScrollSmoother.create({
-      smooth: 1,
-      effects: true,
-      smoothTouch: 0.1,
+      smooth: isMobile ? 0.5 : 1,
+      effects: !isMobile,
+      smoothTouch: isMobile ? 0.2 : 0.1,
       normalizeScroll: true,
     });
 
@@ -72,8 +78,8 @@ window.addEventListener("DOMContentLoaded", () => {
     const activeFrameRange = 40;
     const panelActiveFrameRange = 200;
     const snapThreshold = 500; // in frames
-    const throttleDelay = 1000 / 30; // 30fps
-    const debounceDelay = 1000; // Delay for click debouncing (1 second)
+    const throttleDelay = isMobile ? 66 : 33; // 15 fps for mobile, 30 fps for others
+    const debounceDelay = 1000; // Delay for click debouncing
 
     const sectionStarts = [1, 135, 570, 1114, 1333, 2191];
     const sectionEnds = sectionStarts.slice(1).concat(frameCount + 1);
@@ -99,8 +105,9 @@ window.addEventListener("DOMContentLoaded", () => {
     let lastRenderTime = 0;
     let videoDuration = 0;
     let mappingReady = false;
-    let isScrollingToSection = false; // Blocking animations during scrollToSection
-    let lastClickTime = 0; // For click debouncing
+    let isScrollingToSection = false;
+    let lastClickTime = 0;
+    let isFastScrolling = false;
 
     // ---- Utilities
     const clamp = (min, max, value) => Math.min(max, Math.max(min, value));
@@ -209,7 +216,7 @@ window.addEventListener("DOMContentLoaded", () => {
       elements.dots.forEach((dot, i) => {
         const isActive = i === sectionIndex;
         dot.classList.toggle("active", isActive);
-        if (!isScrollingToSection) animatePanel(i, isActive); // Викликаємо лише якщо не в scrollToSection
+        if (!isScrollingToSection) animatePanel(i, isActive);
       });
     }
 
@@ -260,14 +267,18 @@ window.addEventListener("DOMContentLoaded", () => {
     // ---- Video Control
     let lastAppliedTime = -1;
     function setVideoTimeSafely(t) {
-      const now = Date.now();
-      if (now - lastRenderTime < throttleDelay) return;
-      if (Math.abs(t - lastAppliedTime) < 1 / 60) return;
-      lastRenderTime = now;
-      lastAppliedTime = t;
-      if (!elements.video.seeking) {
-        elements.video.currentTime = clamp(0, videoDuration, t);
-      }
+      if (isFastScrolling) return; // Skipping updates during fast scrolling
+      const now = performance.now();
+      if (now - lastRenderTime < throttleDelay) return; // Applying throttling
+      const setTime = () => {
+        if (Math.abs(t - lastAppliedTime) < 1 / 60) return;
+        lastRenderTime = performance.now();
+        lastAppliedTime = t;
+        if (!elements.video.seeking) {
+          elements.video.currentTime = clamp(0, videoDuration, t);
+        }
+      };
+      requestAnimationFrame(setTime);
     }
 
     // ---- Snap Logic
@@ -298,7 +309,7 @@ window.addEventListener("DOMContentLoaded", () => {
       currentTime = elements.video.currentTime,
     ) {
       const now = Date.now();
-      if (now - lastClickTime < debounceDelay || isScrollingToSection) return; // Click debouncing
+      if (now - lastClickTime < debounceDelay || isScrollingToSection) return;
       lastClickTime = now;
       isScrollingToSection = true;
 
@@ -316,7 +327,6 @@ window.addEventListener("DOMContentLoaded", () => {
         },
       });
 
-      // Video animation
       tl.to(
         { t: currentTime },
         {
@@ -330,7 +340,6 @@ window.addEventListener("DOMContentLoaded", () => {
         0,
       );
 
-      // Scroll animation
       tl.to(
         smoother,
         {
@@ -341,12 +350,10 @@ window.addEventListener("DOMContentLoaded", () => {
         0,
       );
 
-      // Panel animation
       elements.dots.forEach((dot, i) => {
         animatePanel(i, i === sectionIndex, tl);
       });
 
-      // Line animation
       const dot = elements.dots[sectionIndex];
       if (dot) animateLineToDot(dot, tl);
     }
@@ -419,10 +426,19 @@ window.addEventListener("DOMContentLoaded", () => {
     }
 
     // ---- Scroll Handling
-    let scrollTimeout, snapTimeout;
+    let scrollTimeout, snapTimeout, fastScrollTimeout;
     function handleScroll() {
       const currentScrollTop = smoother.scrollTop();
       const isDown = currentScrollTop > lastScrollTop;
+      const scrollSpeed = Math.abs(currentScrollTop - lastScrollTop);
+
+      if (scrollSpeed > 50 && isMobile) {
+        isFastScrolling = true;
+        clearTimeout(fastScrollTimeout);
+        fastScrollTimeout = setTimeout(() => {
+          isFastScrolling = false;
+        }, 200);
+      }
 
       if (elements.header) {
         if (isDown && isHeaderVisible) animateHeader(false);
@@ -476,7 +492,7 @@ window.addEventListener("DOMContentLoaded", () => {
         {},
         {
           scrollTrigger: {
-            scrub: 0.5,
+            scrub: isMobile ? 0.3 : 0.5,
             pin: "#sequenceVideo",
             trigger: "#sequenceVideo",
             end: "500%",
@@ -565,7 +581,7 @@ window.addEventListener("DOMContentLoaded", () => {
           }
           if (elements.nav) {
             gsap.to(elements.nav, {
-              x: "-80px",
+              x: 0,
               opacity: 1,
               duration: 0.8,
               ease: "power2.out",
@@ -601,7 +617,7 @@ window.addEventListener("DOMContentLoaded", () => {
     function onMetadataReady() {
       videoDuration = elements.video.duration || 0;
       if (!videoDuration) {
-        console.error("Failed to get video duration.");
+        console.error("Failed to get video duration");
         return;
       }
       mappingReady = true;
