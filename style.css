@@ -108,16 +108,33 @@ body::-webkit-scrollbar {
 
 .dot span {
   position: absolute;
-  left: -185px;
+  left: -200px;
   width: 170px;
-  text-align: right;
+  text-align: left;
   top: 50%;
   transform: translateY(-50%);
   white-space: nowrap;
   opacity: 0;
   transition: opacity 0.3s;
   color: white;
-  font-size: 14px;
+  font-size: 13px;
+  background: rgba(0, 0, 0, 0.85);
+  padding: 4px 8px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.dot span::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -6px;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-left: 6px solid rgba(0, 0, 0, 0.85);
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
 }
 
 .dot:hover span {
@@ -141,7 +158,6 @@ body::-webkit-scrollbar {
   }
 }
 
-/* Анімація пульсації */
 @keyframes pulseButton {
   0%,
   100% {
@@ -419,6 +435,9 @@ body::-webkit-scrollbar {
   }
 }
 @media (max-width: 768px) {
+  .dot span {
+    display: none;
+  }
   .panel {
     font-size: 25px;
   }
