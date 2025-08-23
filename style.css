@@ -413,7 +413,11 @@ body::-webkit-scrollbar {
     padding-right: 0;
   }
 }
-
+@media (max-width: 1024px), (pointer: coarse) {
+  #oilCanvas {
+    display: none;
+  }
+}
 @media (max-width: 768px) {
   .panel {
     font-size: 25px;
