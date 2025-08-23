@@ -39,7 +39,7 @@
       <div id="smooth-content">
         <video
           id="sequenceVideo"
-          preload="metadata"
+          preload="auto"
           autoplay
           muted
           playsinline
@@ -48,6 +48,11 @@
           controlslist="nodownload noplaybackrate noremoteplayback"
           poster="images/poster.webp"
         >
+          <source
+            src="video/sequence-vlq.mp4?v=1.1.7"
+            type="video/mp4"
+            media="(max-width: 768px)"
+          />
           <source
             src="video/sequence-lq.mp4?v=1.1.7"
             type="video/mp4"

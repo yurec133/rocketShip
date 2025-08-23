@@ -10,7 +10,10 @@ window.addEventListener("DOMContentLoaded", () => {
     gsap.registerPlugin(ScrollTrigger, ScrollSmoother, ScrollToPlugin);
 
     // ---- Detect Mobile Device
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const isMobile =
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        navigator.userAgent,
+      );
 
     // ---- ScrollSmoother
     const smoother = ScrollSmoother.create({
@@ -55,13 +58,27 @@ window.addEventListener("DOMContentLoaded", () => {
       }, delay);
     }
 
+    // Check video readiness with preload="auto"
     if (elements.video.readyState >= 2) {
       hideLoader();
     } else {
       elements.video.addEventListener("loadeddata", hideLoader, { once: true });
-      elements.video.addEventListener("loadedmetadata", () => {
-        if (elements.video.readyState >= 2) hideLoader();
-      }, { once: true });
+      elements.video.addEventListener(
+        "loadedmetadata",
+        () => {
+          if (elements.video.readyState >= 2) hideLoader();
+        },
+        { once: true },
+      );
+      // Fallback if metadata fails to load
+      elements.video.addEventListener(
+        "error",
+        (e) => {
+          console.error("Video loading error:", e);
+          hideLoader(); // Remove loader even if video fails
+        },
+        { once: true },
+      );
     }
 
     // ---- Constants
@@ -72,15 +89,22 @@ window.addEventListener("DOMContentLoaded", () => {
     const panelActiveFrameRange = 200;
     const snapThreshold = 500; // in frames
     const throttleDelay = isMobile ? 100 : 33; // 10 fps for mobile, 30 fps for others
-    const debounceDelay = 1000; // Delay for click and swipe debouncing
+    const debounceDelay = isMobile ? 500 : 1000; // Faster debounce for mobile swipes
 
     const sectionStarts = [1, 135, 570, 1114, 1333, 2191];
     const sectionEnds = sectionStarts.slice(1).concat(frameCount + 1);
 
     const homeFrameCount = sectionStarts[1] - sectionStarts[0];
     const artistFrameLength = Math.floor(homeFrameCount / numberOfArtists);
-    const artistStarts = Array.from({ length: numberOfArtists }, (_, i) => sectionStarts[0] + i * artistFrameLength);
-    const introFrames = artistStarts.flatMap((start) => [start, start + 1, start + 2]);
+    const artistStarts = Array.from(
+      { length: numberOfArtists },
+      (_, i) => sectionStarts[0] + i * artistFrameLength,
+    );
+    const introFrames = artistStarts.flatMap((start) => [
+      start,
+      start + 1,
+      start + 2,
+    ]);
 
     // ---- State
     let isHeaderVisible = true;
@@ -93,8 +117,8 @@ window.addEventListener("DOMContentLoaded", () => {
     let mappingReady = false;
     let isScrollingToSection = false;
     let lastClickTime = 0;
-    let isFastScrolling = false;
     let lastSwipeTime = 0;
+    let isFastScrolling = false;
 
     // ---- Utilities
     const clamp = (min, max, value) => Math.min(max, Math.max(min, value));
@@ -123,10 +147,28 @@ window.addEventListener("DOMContentLoaded", () => {
       gsap.killTweensOf(panel);
 
       const children = panel.querySelectorAll(".panel > *");
-      const fromProps = isActive ? { opacity: 0, y: "10vh", scale: 0.95, rotation: 1 } : {};
+      const fromProps = isActive
+        ? { opacity: 0, y: "10vh", scale: 0.95, rotation: 1 }
+        : {};
       const toProps = isActive
-        ? { opacity: 1, y: 0, scale: 1, rotation: 0, duration: 0.8, ease: "power3.out", overwrite: true }
-        : { opacity: 0, y: "-25vh", scale: 0.95, rotation: -1, duration: 0.8, ease: "power3.in", overwrite: true };
+        ? {
+            opacity: 1,
+            y: 0,
+            scale: 1,
+            rotation: 0,
+            duration: 0.8,
+            ease: "power3.out",
+            overwrite: true,
+          }
+        : {
+            opacity: 0,
+            y: "-25vh",
+            scale: 0.95,
+            rotation: -1,
+            duration: 0.8,
+            ease: "power3.in",
+            overwrite: true,
+          };
 
       if (timeline) {
         timeline.fromTo(
@@ -150,8 +192,23 @@ window.addEventListener("DOMContentLoaded", () => {
       if (children.length) {
         const childFrom = isActive ? { opacity: 0, y: "20vh" } : {};
         const childTo = isActive
-          ? { opacity: 1, y: 0, duration: 0.6, stagger: 0.1, ease: "power2.out", delay: 0.2, overwrite: true }
-          : { opacity: 0, y: "-20vh", duration: 0.6, stagger: 0.1, ease: "power2.in", overwrite: true };
+          ? {
+              opacity: 1,
+              y: 0,
+              duration: 0.6,
+              stagger: 0.1,
+              ease: "power2.out",
+              delay: 0.2,
+              overwrite: true,
+            }
+          : {
+              opacity: 0,
+              y: "-20vh",
+              duration: 0.6,
+              stagger: 0.1,
+              ease: "power2.in",
+              overwrite: true,
+            };
         if (timeline) {
           timeline.fromTo(children, childFrom, childTo, 0);
         } else {
@@ -161,7 +218,12 @@ window.addEventListener("DOMContentLoaded", () => {
     }
 
     function updateActiveDot(sectionIndex) {
-      if (elements.dots.length === 0 || sectionIndex < 0 || sectionIndex >= sections) return;
+      if (
+        elements.dots.length === 0 ||
+        sectionIndex < 0 ||
+        sectionIndex >= sections
+      )
+        return;
       elements.dots.forEach((dot, i) => {
         const isActive = i === sectionIndex;
         dot.classList.toggle("active", isActive);
@@ -174,7 +236,9 @@ window.addEventListener("DOMContentLoaded", () => {
       const progressPoints = sectionStarts.map(frameToProgress);
       for (let i = 0; i < sections - 1; i++) {
         if (progress >= progressPoints[i] && progress < progressPoints[i + 1]) {
-          const frac = (progress - progressPoints[i]) / (progressPoints[i + 1] - progressPoints[i]);
+          const frac =
+            (progress - progressPoints[i]) /
+            (progressPoints[i + 1] - progressPoints[i]);
           return dotCenters[i] + frac * (dotCenters[i + 1] - dotCenters[i]);
         }
       }
@@ -198,7 +262,12 @@ window.addEventListener("DOMContentLoaded", () => {
       const navRect = elements.nav.getBoundingClientRect();
       const dotRect = dot.getBoundingClientRect();
       const targetHeight = dotRect.top + dotRect.height / 2 - navRect.top;
-      const props = { height: targetHeight, duration: 1, ease: "power2.inOut", overwrite: "auto" };
+      const props = {
+        height: targetHeight,
+        duration: 1,
+        ease: "power2.inOut",
+        overwrite: "auto",
+      };
       if (timeline) {
         timeline.to(elements.line, props, 0);
       } else {
@@ -210,6 +279,10 @@ window.addEventListener("DOMContentLoaded", () => {
     let lastAppliedTime = -1;
     function setVideoTimeSafely(t) {
       if (isFastScrolling || elements.video.readyState < 2) {
+        console.log(
+          "Video not ready or fast scrolling, readyState:",
+          elements.video.readyState,
+        );
         return;
       }
       const now = performance.now();
@@ -219,6 +292,7 @@ window.addEventListener("DOMContentLoaded", () => {
         lastRenderTime = performance.now();
         lastAppliedTime = t;
         if (!elements.video.seeking) {
+          console.log("Setting video time:", t);
           elements.video.currentTime = clamp(0, videoDuration, t);
         }
       };
@@ -237,13 +311,21 @@ window.addEventListener("DOMContentLoaded", () => {
       );
 
       const timeThreshold = frameToTime(snapThreshold);
-      if (closest.i === -1 || closest.dist > timeThreshold || closest.i === activeSectionIndex) return;
+      if (
+        closest.i === -1 ||
+        closest.dist > timeThreshold ||
+        closest.i === activeSectionIndex
+      )
+        return;
 
       scrollToSection(closest.i, currentTime);
     }
 
     // ---- Shared Scroll to Section
-    function scrollToSection(sectionIndex, currentTime = elements.video.currentTime) {
+    function scrollToSection(
+      sectionIndex,
+      currentTime = elements.video.currentTime,
+    ) {
       const now = Date.now();
       if (now - lastClickTime < debounceDelay || isScrollingToSection) return;
       lastClickTime = now;
@@ -324,7 +406,8 @@ window.addEventListener("DOMContentLoaded", () => {
 
     function hookBurger() {
       if (!elements.burger || !elements.offcanvasNav) return;
-      const offcanvasBar = elements.offcanvasNav.querySelector(".offcanvas-bar");
+      const offcanvasBar =
+        elements.offcanvasNav.querySelector(".offcanvas-bar");
       if (!offcanvasBar) return;
 
       elements.burger.addEventListener("click", () => {
@@ -383,7 +466,11 @@ window.addEventListener("DOMContentLoaded", () => {
 
       if (elements.scrollButton) {
         gsap.killTweensOf(elements.scrollButton);
-        gsap.set(elements.scrollButton, { opacity: 0, display: "none", overwrite: "auto" });
+        gsap.set(elements.scrollButton, {
+          opacity: 0,
+          display: "none",
+          overwrite: "auto",
+        });
       }
 
       clearTimeout(scrollTimeout);
@@ -401,21 +488,25 @@ window.addEventListener("DOMContentLoaded", () => {
           });
         }
 
-        const docMax = document.documentElement.scrollHeight - window.innerHeight;
+        const docMax =
+          document.documentElement.scrollHeight - window.innerHeight;
         const progress = clamp(0, 1, currentScrollTop / Math.max(1, docMax));
         const currentFrame = progressToFrame(progress);
         const currentTime = frameToTime(currentFrame);
 
-        // For mobile, snap immediately after swipe ends
+        // Enhanced snapping for mobile swipes
         if (isMobile && !isFastScrolling && !isScrollingToSection) {
           const now = Date.now();
           if (now - lastSwipeTime >= debounceDelay) {
             snapToNearestSectionByTime(currentTime);
           }
         } else {
-          snapTimeout = setTimeout(() => snapToNearestSectionByTime(currentTime), 150); // Reduced delay for non-mobile
+          snapTimeout = setTimeout(
+            () => snapToNearestSectionByTime(currentTime),
+            100,
+          ); // Faster snapping for non-mobile
         }
-      }, 100); // Reduced delay for responsiveness
+      }, 50); // Ultra-responsive for mobile swipes
 
       lastScrollTop = Math.max(0, currentScrollTop);
     }
@@ -424,53 +515,73 @@ window.addEventListener("DOMContentLoaded", () => {
 
     // ---- Scroll Sync
     function initScrollSync() {
-      gsap.to({}, {
-        scrollTrigger: {
-          scrub: isMobile ? 0.3 : 0.5,
-          pin: "#sequenceVideo",
-          trigger: "#sequenceVideo",
-          end: "500%",
-          onUpdate: (self) => {
-            if (isScrollingToSection) return;
+      gsap.to(
+        {},
+        {
+          scrollTrigger: {
+            scrub: isMobile ? 0.3 : 0.5,
+            pin: "#sequenceVideo",
+            trigger: "#sequenceVideo",
+            end: "500%",
+            onUpdate: (self) => {
+              if (isScrollingToSection) return;
 
-            const progress = clamp(0, 1, (self.scroll() - self.start) / (self.end - self.start));
-            const frame = progressToFrame(progress);
-            const time = frameToTime(frame);
+              const progress = clamp(
+                0,
+                1,
+                (self.scroll() - self.start) / (self.end - self.start),
+              );
+              const frame = progressToFrame(progress);
+              const time = frameToTime(frame);
 
-            setVideoTimeSafely(time);
+              setVideoTimeSafely(time);
 
-            if (elements.line && elements.nav && !gsap.isTweening(elements.line)) {
-              elements.line.style.height = `${getLineHeightByProgress(progress)}px`;
-            }
+              if (
+                elements.line &&
+                elements.nav &&
+                !gsap.isTweening(elements.line)
+              ) {
+                elements.line.style.height = `${getLineHeightByProgress(progress)}px`;
+              }
 
-            let newSectionIndex = -1;
-            elements.dots.forEach((dot, i) => {
-              const sFrame = sectionStarts[i];
-              const isDotActive = frame >= sFrame && frame < sFrame + activeFrameRange;
-              const isPanelActive = frame >= sFrame && frame < Math.min(sFrame + panelActiveFrameRange, sectionEnds[i]);
-              dot.classList.toggle("active", isDotActive);
-              if (panelStates[i] !== isPanelActive) animatePanel(i, isPanelActive);
-              if (isDotActive) newSectionIndex = i;
-            });
-            activeSectionIndex = newSectionIndex;
-
-            if (elements.scrollButton) {
-              const targetOpacity = activeSectionIndex === sections - 1 ? 0 : 1;
-              const targetDisplay = activeSectionIndex === sections - 1 ? "none" : "block";
-              gsap.to(elements.scrollButton, {
-                opacity: targetOpacity,
-                duration: 0.3,
-                onStart: () => {
-                  if (targetOpacity === 1) elements.scrollButton.style.display = targetDisplay;
-                },
-                onComplete: () => {
-                  if (targetOpacity === 0) elements.scrollButton.style.display = targetDisplay;
-                },
+              let newSectionIndex = -1;
+              elements.dots.forEach((dot, i) => {
+                const sFrame = sectionStarts[i];
+                const isDotActive =
+                  frame >= sFrame && frame < sFrame + activeFrameRange;
+                const isPanelActive =
+                  frame >= sFrame &&
+                  frame <
+                    Math.min(sFrame + panelActiveFrameRange, sectionEnds[i]);
+                dot.classList.toggle("active", isDotActive);
+                if (panelStates[i] !== isPanelActive)
+                  animatePanel(i, isPanelActive);
+                if (isDotActive) newSectionIndex = i;
               });
-            }
+              activeSectionIndex = newSectionIndex;
+
+              if (elements.scrollButton) {
+                const targetOpacity =
+                  activeSectionIndex === sections - 1 ? 0 : 1;
+                const targetDisplay =
+                  activeSectionIndex === sections - 1 ? "none" : "block";
+                gsap.to(elements.scrollButton, {
+                  opacity: targetOpacity,
+                  duration: 0.3,
+                  onStart: () => {
+                    if (targetOpacity === 1)
+                      elements.scrollButton.style.display = targetDisplay;
+                  },
+                  onComplete: () => {
+                    if (targetOpacity === 0)
+                      elements.scrollButton.style.display = targetDisplay;
+                  },
+                });
+              }
+            },
           },
         },
-      });
+      );
     }
 
     // ---- Intro Animation
@@ -488,14 +599,27 @@ window.addEventListener("DOMContentLoaded", () => {
         },
         onComplete: () => {
           if (elements.header) {
-            gsap.to(elements.header, { y: 0, opacity: 1, duration: 0.8, ease: "power2.out" });
+            gsap.to(elements.header, {
+              y: 0,
+              opacity: 1,
+              duration: 0.8,
+              ease: "power2.out",
+            });
           }
           if (elements.nav) {
-            gsap.to(elements.nav, { x: 0, opacity: 1, duration: 0.8, ease: "power2.out" });
+            gsap.to(elements.nav, {
+              x: 0,
+              opacity: 1,
+              duration: 0.8,
+              ease: "power2.out",
+            });
           }
 
           const randomArtist = Math.floor(Math.random() * numberOfArtists);
-          const endFrame = randomArtist < numberOfArtists - 1 ? artistStarts[randomArtist + 1] - 1 : sectionStarts[1] - 1;
+          const endFrame =
+            randomArtist < numberOfArtists - 1
+              ? artistStarts[randomArtist + 1] - 1
+              : sectionStarts[1] - 1;
           setVideoTimeSafely(frameToTime(endFrame));
 
           if (elements.scrollButton) {
@@ -510,7 +634,8 @@ window.addEventListener("DOMContentLoaded", () => {
           activeSectionIndex = 0;
           updateActiveDot(0);
           animatePanel(0, true);
-          if (elements.line && dotCenters[0]) elements.line.style.height = `${dotCenters[0]}px`;
+          if (elements.line && dotCenters[0])
+            elements.line.style.height = `${dotCenters[0]}px`;
         },
       });
     }
@@ -520,6 +645,7 @@ window.addEventListener("DOMContentLoaded", () => {
       videoDuration = elements.video.duration || 0;
       if (!videoDuration) {
         console.error("Failed to get video duration");
+        hideLoader(); // Remove loader even if duration fails
         return;
       }
       mappingReady = true;
@@ -541,7 +667,9 @@ window.addEventListener("DOMContentLoaded", () => {
     if (elements.video.readyState >= 1) {
       onMetadataReady();
     } else {
-      elements.video.addEventListener("loadedmetadata", onMetadataReady, { once: true });
+      elements.video.addEventListener("loadedmetadata", onMetadataReady, {
+        once: true,
+      });
     }
   })();
 });
