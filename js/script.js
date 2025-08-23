@@ -279,10 +279,6 @@ window.addEventListener("DOMContentLoaded", () => {
     let lastAppliedTime = -1;
     function setVideoTimeSafely(t) {
       if (isFastScrolling || elements.video.readyState < 2) {
-        console.log(
-          "Video not ready or fast scrolling, readyState:",
-          elements.video.readyState,
-        );
         return;
       }
       const now = performance.now();
@@ -292,7 +288,6 @@ window.addEventListener("DOMContentLoaded", () => {
         lastRenderTime = performance.now();
         lastAppliedTime = t;
         if (!elements.video.seeking) {
-          console.log("Setting video time:", t);
           elements.video.currentTime = clamp(0, videoDuration, t);
         }
       };
