@@ -2,9 +2,9 @@ window.addEventListener("DOMContentLoaded", () => {
   (function () {
     "use strict";
 
-    // ---- GSAP
+    // ---- GSAP Check
     if (typeof gsap === "undefined" || !gsap.registerPlugin) {
-      console.error("GSAP/плагіни не підключені.");
+      console.error("GSAP/plugins are not loaded.");
       return;
     }
     gsap.registerPlugin(ScrollTrigger, ScrollSmoother, ScrollToPlugin);
@@ -17,89 +17,80 @@ window.addEventListener("DOMContentLoaded", () => {
       normalizeScroll: true,
     });
 
-    // ---- Елементи
-    const video = document.getElementById("sequenceVideo");
-    const dots = document.querySelectorAll(".dot");
-    const panels = document.querySelectorAll(".panel");
-    const nav = document.querySelector("#nav-dots");
-    const line = document.querySelector("#nav-dots .line");
-    const scrollButton = document.getElementById("scrollTop");
-    const header = document.getElementById("header");
-    const burger = document.getElementById("burger-nav");
-    const offcanvasNav = document.getElementById("offcanvas-nav");
+    // ---- DOM Elements
+    const elements = {
+      video: document.getElementById("sequenceVideo"),
+      dots: document.querySelectorAll(".dot"),
+      panels: document.querySelectorAll(".panel"),
+      nav: document.querySelector("#nav-dots"),
+      line: document.querySelector("#nav-dots .line"),
+      scrollButton: document.getElementById("scrollTop"),
+      header: document.getElementById("header"),
+      burger: document.getElementById("burger-nav"),
+      offcanvasNav: document.getElementById("offcanvas-nav"),
+      loader: document.getElementById("loader"),
+    };
 
-    const MIN_LOADER_MS = 250;
-
-    if (!video) {
+    if (!elements.video) {
       console.error("#sequenceVideo not found");
       return;
     }
-    let loaderShownAt = performance.now();
 
-    function hideLoaderOnce() {
-      const loader = document.getElementById("loader");
-      if (!loader) return;
+    const MIN_LOADER_MS = 250;
+    const loaderShownAt = performance.now();
 
+    function hideLoader() {
       const elapsed = performance.now() - loaderShownAt;
       const delay = Math.max(0, MIN_LOADER_MS - elapsed);
 
       setTimeout(() => {
-        if (typeof gsap !== "undefined") {
-          gsap.to(loader, {
-            opacity: 0,
-            duration: 0.4,
-            onComplete: () => loader.remove(),
-          });
-        } else {
-          loader.style.opacity = "0";
-          setTimeout(() => loader.remove(), 400);
-        }
+        gsap.to(elements.loader, {
+          opacity: 0,
+          duration: 0.4,
+          onComplete: () => elements.loader.remove(),
+        });
       }, delay);
     }
 
-    if (video && video.readyState >= 2) {
-      hideLoaderOnce();
-    } else if (video) {
-      video.addEventListener("loadeddata", hideLoaderOnce, { once: true });
-      video.addEventListener(
+    if (elements.video.readyState >= 2) {
+      hideLoader();
+    } else {
+      elements.video.addEventListener("loadeddata", hideLoader, { once: true });
+      elements.video.addEventListener(
         "loadedmetadata",
         () => {
-          if (video.readyState >= 2) hideLoaderOnce();
+          if (elements.video.readyState >= 2) hideLoader();
         },
         { once: true },
       );
     }
 
-    // ---- Параметри (залишаємо твої)
-    const frameCount = 2191; // попередня кількість кадрів
+    // ---- Constants
+    const frameCount = 2191;
     const sections = 6;
     const numberOfArtists = 10;
     const activeFrameRange = 40;
     const panelActiveFrameRange = 200;
-    const snapThreshold = 500; // у кадрах (будемо конвертувати у час)
+    const snapThreshold = 500; // in frames
     const throttleDelay = 1000 / 30; // 30fps
+    const debounceDelay = 1000; // Delay for click debouncing (1 second)
 
-    // Ті ж самі старти секцій у кадрах:
     const sectionStarts = [1, 135, 570, 1114, 1333, 2191];
     const sectionEnds = sectionStarts.slice(1).concat(frameCount + 1);
 
-    // Для інтрo (перші 3 кадри кожного артиста)
     const homeFrameCount = sectionStarts[1] - sectionStarts[0];
     const artistFrameLength = Math.floor(homeFrameCount / numberOfArtists);
     const artistStarts = Array.from(
       { length: numberOfArtists },
       (_, i) => sectionStarts[0] + i * artistFrameLength,
     );
-    const introFrames = [];
-    for (let i = 0; i < numberOfArtists; i++) {
-      introFrames.push(
-        artistStarts[i],
-        artistStarts[i] + 1,
-        artistStarts[i] + 2,
-      );
-    }
+    const introFrames = artistStarts.flatMap((start) => [
+      start,
+      start + 1,
+      start + 2,
+    ]);
 
-    // ---- Стан
+    // ---- State
     let isHeaderVisible = true;
     let activeSectionIndex = -1;
     const panelStates = new Array(sections).fill(false);
@@ -108,25 +99,21 @@ window.addEventListener("DOMContentLoaded", () => {
     let lastRenderTime = 0;
     let videoDuration = 0;
     let mappingReady = false;
+    let isScrollingToSection = false; // Blocking animations during scrollToSection
+    let lastClickTime = 0; // For click debouncing
 
-    // ---- Утиліти
+    // ---- Utilities
     const clamp = (min, max, value) => Math.min(max, Math.max(min, value));
     const progressToFrame = (p) => Math.floor(p * (frameCount - 1)) + 1;
     const frameToProgress = (f) => (f - 1) / (frameCount - 1);
-
-    // мапа кадрів у час відео (секунди)
     const frameToTime = (f) => videoDuration * frameToProgress(f);
+    const sectionStartTimes = () => sectionStarts.map(frameToTime);
 
-    // зручності для секцій у часі
-    const sectionStartTimes = () => sectionStarts.map((f) => frameToTime(f));
-    const sectionEndTimes = () =>
-      sectionEnds.map((f) => frameToTime(Math.min(f, frameCount)));
-
-    // ---- Розрахунок позицій дотів для прогрес-лінії
+    // ---- Update Dot Centers
     function updateDotCenters() {
-      if (!nav || dots.length === 0) return;
-      const navRect = nav.getBoundingClientRect();
-      dotCenters = Array.from(dots).map((dot) => {
+      if (!elements.nav || elements.dots.length === 0) return;
+      const navRect = elements.nav.getBoundingClientRect();
+      dotCenters = Array.from(elements.dots).map((dot) => {
         const r = dot.getBoundingClientRect();
         return r.top + r.height / 2 - navRect.top;
       });
@@ -134,78 +121,101 @@ window.addEventListener("DOMContentLoaded", () => {
     updateDotCenters();
     window.addEventListener("resize", updateDotCenters);
 
-    // ---- Анімація панелей (як у тебе)
-    function animateSection(sectionIndex, isActive) {
-      const panel = panels[sectionIndex];
+    // ---- Animations
+    function animatePanel(sectionIndex, isActive, timeline) {
+      const panel = elements.panels[sectionIndex];
       if (!panel || panelStates[sectionIndex] === isActive) return;
       panelStates[sectionIndex] = isActive;
       gsap.killTweensOf(panel);
 
       const children = panel.querySelectorAll(".panel > *");
-
-      if (isActive) {
-        gsap.fromTo(
-          panel,
-          { opacity: 0, y: "10vh", scale: 0.95, rotation: 1 },
-          {
+      const fromProps = isActive
+        ? { opacity: 0, y: "10vh", scale: 0.95, rotation: 1 }
+        : {};
+      const toProps = isActive
+        ? {
             opacity: 1,
             y: 0,
             scale: 1,
             rotation: 0,
             duration: 0.8,
             ease: "power3.out",
-            onStart: () => panel.classList.add("active"),
+            overwrite: true,
+          }
+        : {
+            opacity: 0,
+            y: "-25vh",
+            scale: 0.95,
+            rotation: -1,
+            duration: 0.8,
+            ease: "power3.in",
+            overwrite: true,
+          };
+
+      if (timeline) {
+        timeline.fromTo(
+          panel,
+          fromProps,
+          {
+            ...toProps,
+            onStart: () => isActive && panel.classList.add("active"),
+            onComplete: () => !isActive && panel.classList.remove("active"),
           },
+          0,
         );
-        if (children.length) {
-          gsap.fromTo(
-            children,
-            { opacity: 0, y: "20vh" },
-            {
+      } else {
+        gsap.fromTo(panel, fromProps, {
+          ...toProps,
+          onStart: () => isActive && panel.classList.add("active"),
+          onComplete: () => !isActive && panel.classList.remove("active"),
+        });
+      }
+
+      if (children.length) {
+        const childFrom = isActive ? { opacity: 0, y: "20vh" } : {};
+        const childTo = isActive
+          ? {
               opacity: 1,
               y: 0,
               duration: 0.6,
               stagger: 0.1,
               ease: "power2.out",
               delay: 0.2,
-            },
-          );
-        }
-      } else {
-        gsap.to(panel, {
-          opacity: 0,
-          y: "-25vh",
-          scale: 0.95,
-          rotation: -1,
-          duration: 0.8,
-          ease: "power3.in",
-          onComplete: () => panel.classList.remove("active"),
-        });
-        if (children.length) {
-          gsap.to(children, {
-            opacity: 0,
-            y: "-20vh",
-            duration: 0.6,
-            stagger: 0.1,
-            ease: "power2.in",
-          });
+              overwrite: true,
+            }
+          : {
+              opacity: 0,
+              y: "-20vh",
+              duration: 0.6,
+              stagger: 0.1,
+              ease: "power2.in",
+              overwrite: true,
+            };
+        if (timeline) {
+          timeline.fromTo(children, childFrom, childTo, 0);
+        } else {
+          gsap.fromTo(children, childFrom, childTo);
         }
       }
     }
 
     function updateActiveDot(sectionIndex) {
-      if (dots.length === 0 || sectionIndex < 0 || sectionIndex >= sections)
+      if (
+        elements.dots.length === 0 ||
+        sectionIndex < 0 ||
+        sectionIndex >= sections
+      )
         return;
-      dots.forEach((dot, i) => {
+      elements.dots.forEach((dot, i) => {
         const isActive = i === sectionIndex;
         dot.classList.toggle("active", isActive);
-        animateSection(i, isActive);
+        if (!isScrollingToSection) animatePanel(i, isActive); // Викликаємо лише якщо не в scrollToSection
       });
     }
 
     function getLineHeightByProgress(progress) {
-      if (!nav || dots.length === 0) return 0;
-      const progressPoints = sectionStarts.map((s) => frameToProgress(s));
+      if (!elements.nav || elements.dots.length === 0) return 0;
+      const progressPoints = sectionStarts.map(frameToProgress);
       for (let i = 0; i < sections - 1; i++) {
         if (progress >= progressPoints[i] && progress < progressPoints[i + 1]) {
           const frac =
@@ -218,10 +228,10 @@ window.addEventListener("DOMContentLoaded", () => {
     }
 
     function animateHeader(show) {
-      if (!header || show === isHeaderVisible) return;
+      if (!elements.header || show === isHeaderVisible) return;
       isHeaderVisible = show;
-      gsap.killTweensOf(header);
-      gsap.to(header, {
+      gsap.killTweensOf(elements.header);
+      gsap.to(elements.header, {
         y: show ? 0 : "-100%",
         opacity: show ? 1 : 0,
         duration: 0.5,
@@ -229,22 +239,38 @@ window.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    // ---- Рендер: ми просто оновлюємо кадр відео (через currentTime)
-    // нічого малювати на canvas не треба
-    let lastAppliedTime = -1;
-    function setVideoTimeSafely(t) {
-      const now = Date.now();
-      if (now - lastRenderTime < throttleDelay) return; // throttle
-      if (Math.abs(t - lastAppliedTime) < 1 / 60) return; // дрібна різниця, пропускаємо
-      lastRenderTime = now;
-      lastAppliedTime = t;
-      // Seek без відтворення
-      if (!video.seeking) {
-        video.currentTime = clamp(0, videoDuration, t);
+    function animateLineToDot(dot, timeline) {
+      if (!elements.line || !dot || !elements.nav) return;
+      const navRect = elements.nav.getBoundingClientRect();
+      const dotRect = dot.getBoundingClientRect();
+      const targetHeight = dotRect.top + dotRect.height / 2 - navRect.top;
+      const props = {
+        height: targetHeight,
+        duration: 1,
+        ease: "power2.inOut",
+        overwrite: "auto",
+      };
+      if (timeline) {
+        timeline.to(elements.line, props, 0);
+      } else {
+        gsap.to(elements.line, props);
       }
     }
 
-    // ---- Снап до найближчої секції
+    // ---- Video Control
+    let lastAppliedTime = -1;
+    function setVideoTimeSafely(t) {
+      const now = Date.now();
+      if (now - lastRenderTime < throttleDelay) return;
+      if (Math.abs(t - lastAppliedTime) < 1 / 60) return;
+      lastRenderTime = now;
+      lastAppliedTime = t;
+      if (!elements.video.seeking) {
+        elements.video.currentTime = clamp(0, videoDuration, t);
+      }
+    }
+
+    // ---- Snap Logic
     function snapToNearestSectionByTime(currentTime) {
       const starts = sectionStartTimes();
       const closest = starts.reduce(
@@ -255,168 +281,122 @@ window.addEventListener("DOMContentLoaded", () => {
         { i: -1, dist: Infinity },
       );
 
-      // snapThreshold у кадрах -> у час
       const timeThreshold = frameToTime(snapThreshold);
-
       if (
-        closest.i !== -1 &&
-        closest.dist <= timeThreshold &&
-        closest.i !== activeSectionIndex
-      ) {
-        const targetTime = starts[closest.i];
-        // Прокрутимо smoother + відео синхронно
-        const docMax =
-          document.documentElement.scrollHeight - window.innerHeight;
-        const targetProgress = frameToProgress(sectionStarts[closest.i]);
-        const targetScroll = targetProgress * docMax;
+        closest.i === -1 ||
+        closest.dist > timeThreshold ||
+        closest.i === activeSectionIndex
+      )
+        return;
 
-        const tl = gsap.timeline({
-          onComplete: () => {
-            updateActiveDot(closest.i);
-            activeSectionIndex = closest.i;
-            const d = dots[closest.i];
-            if (d) animateLineToDot(d);
-          },
-        });
-
-        tl.to({}, { duration: 0.5 }); // просто для таймінгу
-        tl.eventCallback("onUpdate", () => {
-          // під час твіна рухаємо обидва
-          const p = tl.progress(); // 0..1
-          const ct = currentTime + (targetTime - currentTime) * p;
-          setVideoTimeSafely(ct);
-          smoother.scrollTop(
-            lastScrollTop + (targetScroll - lastScrollTop) * p,
-          );
-        });
-      }
+      scrollToSection(closest.i, currentTime);
     }
 
-    function animateLineToDot(dot) {
-      if (!line || !dot || !nav) return;
-      const navRect = nav.getBoundingClientRect();
-      const dotRect = dot.getBoundingClientRect();
-      const targetHeight = dotRect.top + dotRect.height / 2 - navRect.top;
-      gsap.to(line, {
-        height: targetHeight,
-        duration: 1,
-        ease: "power2.inOut",
-        overwrite: "auto",
+    // ---- Shared Scroll to Section
+    function scrollToSection(
+      sectionIndex,
+      currentTime = elements.video.currentTime,
+    ) {
+      const now = Date.now();
+      if (now - lastClickTime < debounceDelay || isScrollingToSection) return; // Click debouncing
+      lastClickTime = now;
+      isScrollingToSection = true;
+
+      const targetFrame = sectionStarts[sectionIndex];
+      const targetTime = frameToTime(targetFrame);
+      const docMax = document.documentElement.scrollHeight - window.innerHeight;
+      const targetScroll = frameToProgress(targetFrame) * docMax;
+
+      activeSectionIndex = sectionIndex;
+
+      const tl = gsap.timeline({
+        onComplete: () => {
+          isScrollingToSection = false;
+          updateActiveDot(sectionIndex);
+        },
       });
-    }
 
-    // ---- Обробка кліків по дотах
-    function hookDots() {
-      if (dots.length === 0) return;
-      dots.forEach((dot, index) => {
-        dot.addEventListener("click", () => {
-          const section = parseInt(dot.dataset.section, 10);
-          if (isNaN(section) || section < 0 || section >= sections) return;
-
-          const targetFrame = sectionStarts[section];
-          const targetTime = frameToTime(targetFrame);
-          const docMax =
-            document.documentElement.scrollHeight - window.innerHeight;
-          const targetScroll = frameToProgress(targetFrame) * docMax;
-
-          updateActiveDot(section);
-          activeSectionIndex = section;
-
-          // Tween відео
-          gsap.to(
-            { t: video.currentTime },
-            {
-              t: targetTime,
-              duration: 1,
-              ease: "power2.inOut",
-              onUpdate: function () {
-                setVideoTimeSafely(this.targets()[0].t);
-              },
-            },
-          );
-
-          // Tween скролу
-          gsap.to(smoother, {
-            scrollTop: targetScroll,
-            duration: 1,
-            ease: "power2.inOut",
-            onComplete: () => updateActiveDot(section),
-          });
-
-          animateLineToDot(dot);
-        });
-      });
-    }
-
-    // ---- Кнопка Scroll (вниз до наступної секції)
-    function hookScrollButton() {
-      if (!scrollButton) return;
-      scrollButton.addEventListener("click", () => {
-        let nextSection = activeSectionIndex + 1;
-        if (nextSection >= sections) return;
-
-        const targetFrame = sectionStarts[nextSection];
-        const targetTime = frameToTime(targetFrame);
-        const docMax =
-          document.documentElement.scrollHeight - window.innerHeight;
-        const targetScroll = frameToProgress(targetFrame) * docMax;
-
-        updateActiveDot(nextSection);
-        activeSectionIndex = nextSection;
-
-        gsap.to(
-          { t: video.currentTime },
-          {
-            t: targetTime,
-            duration: 1,
-            ease: "power2.inOut",
-            onUpdate: function () {
-              setVideoTimeSafely(this.targets()[0].t);
-            },
+      // Video animation
+      tl.to(
+        { t: currentTime },
+        {
+          t: targetTime,
+          duration: 1,
+          ease: "power2.inOut",
+          onUpdate: function () {
+            setVideoTimeSafely(this.targets()[0].t);
           },
-        );
+        },
+        0,
+      );
 
-        gsap.to(smoother, {
+      // Scroll animation
+      tl.to(
+        smoother,
+        {
           scrollTop: targetScroll,
           duration: 1,
           ease: "power2.inOut",
-          onComplete: () => {
-            updateActiveDot(nextSection);
-            if (nextSection === sections - 1) {
-              gsap.to(scrollButton, {
-                opacity: 0,
-                duration: 0.3,
-                onComplete: () => {
-                  scrollButton.style.display = "none";
-                },
-              });
-            }
-          },
-        });
+        },
+        0,
+      );
 
-        if (dots[nextSection]) animateLineToDot(dots[nextSection]);
+      // Panel animation
+      elements.dots.forEach((dot, i) => {
+        animatePanel(i, i === sectionIndex, tl);
+      });
+
+      // Line animation
+      const dot = elements.dots[sectionIndex];
+      if (dot) animateLineToDot(dot, tl);
+    }
+
+    // ---- Hooks
+    function hookDots() {
+      if (elements.dots.length === 0) return;
+      elements.dots.forEach((dot, index) => {
+        dot.addEventListener("click", () => scrollToSection(index));
       });
     }
 
-    // ---- Бургер/оффканвас (як було)
-    function hookBurger() {
-      if (!burger || !offcanvasNav) return;
-      burger.addEventListener("click", () => {
-        const isActive = burger.classList.contains("active");
-        const offcanvasBar = offcanvasNav.querySelector(".offcanvas-bar");
-        if (!offcanvasBar) return;
+    function hookScrollButton() {
+      if (!elements.scrollButton) return;
+      elements.scrollButton.addEventListener("click", () => {
+        const nextSection = activeSectionIndex + 1;
+        if (nextSection >= sections) return;
+        scrollToSection(nextSection);
 
+        if (nextSection === sections - 1) {
+          gsap.to(elements.scrollButton, {
+            opacity: 0,
+            duration: 0.3,
+            onComplete: () => {
+              elements.scrollButton.style.display = "none";
+            },
+          });
+        }
+      });
+    }
+
+    function hookBurger() {
+      if (!elements.burger || !elements.offcanvasNav) return;
+      const offcanvasBar =
+        elements.offcanvasNav.querySelector(".offcanvas-bar");
+      if (!offcanvasBar) return;
+
+      elements.burger.addEventListener("click", () => {
+        const isActive = elements.burger.classList.contains("active");
         if (isActive) {
-          burger.classList.remove("active");
+          elements.burger.classList.remove("active");
           gsap.to(offcanvasBar, {
             left: "-250px",
             duration: 0.3,
             ease: "power2.inOut",
-            onComplete: () => offcanvasNav.classList.remove("open"),
+            onComplete: () => elements.offcanvasNav.classList.remove("open"),
           });
         } else {
-          burger.classList.add("active");
-          offcanvasNav.classList.add("open");
+          elements.burger.classList.add("active");
+          elements.offcanvasNav.classList.add("open");
           gsap.fromTo(
             offcanvasBar,
             { left: "-250px" },
@@ -425,35 +405,33 @@ window.addEventListener("DOMContentLoaded", () => {
         }
       });
 
-      offcanvasNav.addEventListener("click", (e) => {
-        const offcanvasBar = offcanvasNav.querySelector(".offcanvas-bar");
-        if (!offcanvasBar) return;
-        if (e.target === offcanvasNav) {
-          burger.classList.remove("active");
+      elements.offcanvasNav.addEventListener("click", (e) => {
+        if (e.target === elements.offcanvasNav) {
+          elements.burger.classList.remove("active");
           gsap.to(offcanvasBar, {
             left: "-250px",
             duration: 0.3,
             ease: "power2.inOut",
-            onComplete: () => offcanvasNav.classList.remove("open"),
+            onComplete: () => elements.offcanvasNav.classList.remove("open"),
           });
         }
       });
     }
 
-    // ---- Обробка скролу (хедер/кнопка/снап)
+    // ---- Scroll Handling
     let scrollTimeout, snapTimeout;
     function handleScroll() {
       const currentScrollTop = smoother.scrollTop();
       const isDown = currentScrollTop > lastScrollTop;
 
-      if (header) {
+      if (elements.header) {
         if (isDown && isHeaderVisible) animateHeader(false);
         else if (!isDown && !isHeaderVisible) animateHeader(true);
       }
 
-      if (scrollButton) {
-        gsap.killTweensOf(scrollButton);
-        gsap.set(scrollButton, {
+      if (elements.scrollButton) {
+        gsap.killTweensOf(elements.scrollButton);
+        gsap.set(elements.scrollButton, {
           opacity: 0,
           display: "none",
           overwrite: "auto",
@@ -464,48 +442,47 @@ window.addEventListener("DOMContentLoaded", () => {
       clearTimeout(snapTimeout);
 
       scrollTimeout = setTimeout(() => {
-        if (scrollButton && activeSectionIndex !== sections - 1) {
-          gsap.to(scrollButton, {
+        if (elements.scrollButton && activeSectionIndex !== sections - 1) {
+          gsap.to(elements.scrollButton, {
             opacity: 1,
             duration: 0.3,
             overwrite: "auto",
             onStart: () => {
-              scrollButton.style.display = "block";
+              elements.scrollButton.style.display = "block";
             },
           });
         }
 
-        // Після зупинки — снап до секції
         const docMax =
           document.documentElement.scrollHeight - window.innerHeight;
         const progress = clamp(0, 1, currentScrollTop / Math.max(1, docMax));
         const currentFrame = progressToFrame(progress);
         const currentTime = frameToTime(currentFrame);
 
-        snapTimeout = setTimeout(() => {
-          snapToNearestSectionByTime(currentTime);
-        }, 300);
+        snapTimeout = setTimeout(
+          () => snapToNearestSectionByTime(currentTime),
+          300,
+        );
       }, 300);
 
-      lastScrollTop = currentScrollTop <= 0 ? 0 : currentScrollTop;
+      lastScrollTop = Math.max(0, currentScrollTop);
     }
 
     ScrollTrigger.create({ onUpdate: handleScroll });
-    window.addEventListener("scroll", handleScroll);
 
-    // ---- Головна зв'язка: скрол -> час у відео
+    // ---- Scroll Sync
     function initScrollSync() {
-      // один ScrollTrigger на весь документ, що лінійно мапить прогрес у час
       gsap.to(
         {},
         {
-          // dummy tween для scrub
           scrollTrigger: {
             scrub: 0.5,
             pin: "#sequenceVideo",
             trigger: "#sequenceVideo",
             end: "500%",
             onUpdate: (self) => {
+              if (isScrollingToSection) return;
+
               const progress = clamp(
                 0,
                 1,
@@ -514,17 +491,18 @@ window.addEventListener("DOMContentLoaded", () => {
               const frame = progressToFrame(progress);
               const time = frameToTime(frame);
 
-              // Оновлюємо відео
               setVideoTimeSafely(time);
 
-              // Оновлюємо лінію в навігації
-              if (line && nav && !gsap.isTweening(line)) {
-                line.style.height = `${getLineHeightByProgress(progress)}px`;
+              if (
+                elements.line &&
+                elements.nav &&
+                !gsap.isTweening(elements.line)
+              ) {
+                elements.line.style.height = `${getLineHeightByProgress(progress)}px`;
               }
 
-              // Стани дотів/панелей
               let newSectionIndex = -1;
-              dots.forEach((dot, i) => {
+              elements.dots.forEach((dot, i) => {
                 const sFrame = sectionStarts[i];
                 const isDotActive =
                   frame >= sFrame && frame < sFrame + activeFrameRange;
@@ -534,29 +512,28 @@ window.addEventListener("DOMContentLoaded", () => {
                     Math.min(sFrame + panelActiveFrameRange, sectionEnds[i]);
                 dot.classList.toggle("active", isDotActive);
                 if (panelStates[i] !== isPanelActive)
-                  animateSection(i, isPanelActive);
+                  animatePanel(i, isPanelActive);
                 if (isDotActive) newSectionIndex = i;
               });
               activeSectionIndex = newSectionIndex;
 
-              if (scrollButton) {
-                if (activeSectionIndex === sections - 1) {
-                  gsap.to(scrollButton, {
-                    opacity: 0,
-                    duration: 0.3,
-                    onComplete: () => {
-                      scrollButton.style.display = "none";
-                    },
-                  });
-                } else {
-                  gsap.to(scrollButton, {
-                    opacity: 1,
-                    duration: 0.3,
-                    onStart: () => {
-                      scrollButton.style.display = "block";
-                    },
-                  });
-                }
+              if (elements.scrollButton) {
+                const targetOpacity =
+                  activeSectionIndex === sections - 1 ? 0 : 1;
+                const targetDisplay =
+                  activeSectionIndex === sections - 1 ? "none" : "block";
+                gsap.to(elements.scrollButton, {
+                  opacity: targetOpacity,
+                  duration: 0.3,
+                  onStart: () => {
+                    if (targetOpacity === 1)
+                      elements.scrollButton.style.display = targetDisplay;
+                  },
+                  onComplete: () => {
+                    if (targetOpacity === 0)
+                      elements.scrollButton.style.display = targetDisplay;
+                  },
+                });
               }
             },
           },
@@ -564,7 +541,7 @@ window.addEventListener("DOMContentLoaded", () => {
       );
     }
 
-    // ---- Інтро: 3 сек, «листання» перших кадрів артистів
+    // ---- Intro Animation
     function runIntro() {
       const dummy = { val: 0 };
       gsap.to(dummy, {
@@ -578,59 +555,59 @@ window.addEventListener("DOMContentLoaded", () => {
           if (frame) setVideoTimeSafely(frameToTime(frame));
         },
         onComplete: () => {
-          // показати UI
-          if (header)
-            gsap.to(header, {
+          if (elements.header) {
+            gsap.to(elements.header, {
               y: 0,
               opacity: 1,
               duration: 0.8,
               ease: "power2.out",
             });
-          if (nav)
-            gsap.to(nav, {
+          }
+          if (elements.nav) {
+            gsap.to(elements.nav, {
               x: "-80px",
               opacity: 1,
               duration: 0.8,
               ease: "power2.out",
             });
+          }
 
-          // зупинитися на кінці випадкового артиста:
           const randomArtist = Math.floor(Math.random() * numberOfArtists);
-          const endFrame1 =
+          const endFrame =
             randomArtist < numberOfArtists - 1
               ? artistStarts[randomArtist + 1] - 1
               : sectionStarts[1] - 1;
-          setVideoTimeSafely(frameToTime(endFrame1));
+          setVideoTimeSafely(frameToTime(endFrame));
 
-          if (scrollButton)
-            gsap.to(scrollButton, {
+          if (elements.scrollButton) {
+            gsap.to(elements.scrollButton, {
               opacity: 1,
               duration: 0.5,
-              onStart: () => (scrollButton.style.display = "block"),
+              onStart: () => (elements.scrollButton.style.display = "block"),
             });
+          }
 
-          // старт скрол-синхронізації
           initScrollSync();
           activeSectionIndex = 0;
           updateActiveDot(0);
-          animateSection(0, true);
-          if (line && dotCenters[0]) line.style.height = `${dotCenters[0]}px`;
+          animatePanel(0, true);
+          if (elements.line && dotCenters[0])
+            elements.line.style.height = `${dotCenters[0]}px`;
         },
       });
     }
 
-    // ---- Ініціалізація після завантаження метаданих відео
+    // ---- Metadata Ready
     function onMetadataReady() {
-      videoDuration = video.duration || 0;
+      videoDuration = elements.video.duration || 0;
       if (!videoDuration) {
-        console.error("Не вдалось отримати тривалість відео.");
+        console.error("Failed to get video duration.");
         return;
       }
       mappingReady = true;
 
-      // зупинити авто-плей (деякі браузери можуть стартувати)
-      video.pause();
-      video.currentTime = frameToTime(1);
+      elements.video.pause();
+      elements.video.currentTime = frameToTime(1);
 
       hookDots();
       hookScrollButton();
@@ -638,10 +615,12 @@ window.addEventListener("DOMContentLoaded", () => {
       runIntro();
     }
 
-    if (video.readyState >= 1) {
+    if (elements.video.readyState >= 1) {
       onMetadataReady();
     } else {
-      video.addEventListener("loadedmetadata", onMetadataReady, { once: true });
+      elements.video.addEventListener("loadedmetadata", onMetadataReady, {
+        once: true,
+      });
     }
   })();
 });

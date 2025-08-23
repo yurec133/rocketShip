@@ -98,5 +98,11 @@
     animateCursorTrail();
   }
 
-  initCursorTrail();
+  if (
+    !("ontouchstart" in window) &&
+    !window.matchMedia("(pointer: coarse)").matches &&
+    window.innerWidth > 1024
+  ) {
+    initCursorTrail();
+  }
 })();
