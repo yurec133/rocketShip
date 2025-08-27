@@ -119,6 +119,7 @@ window.addEventListener("DOMContentLoaded", () => {
     let lastClickTime = 0;
     let lastSwipeTime = 0;
     let isFastScrolling = false;
+    let hasScrolled = false; // Track if user has scrolled
 
     // ---- Utilities
     const clamp = (min, max, value) => Math.min(max, Math.max(min, value));
@@ -285,7 +286,7 @@ window.addEventListener("DOMContentLoaded", () => {
       if (now - lastRenderTime < throttleDelay) return;
       const setTime = () => {
         if (Math.abs(t - lastAppliedTime) < 1 / 60) return;
-        lastRenderTime = performance.now();
+        lastRenderTime = now;
         lastAppliedTime = t;
         if (!elements.video.seeking) {
           elements.video.currentTime = clamp(0, videoDuration, t);
@@ -624,13 +625,6 @@ window.addEventListener("DOMContentLoaded", () => {
               onStart: () => (elements.scrollButton.style.display = "block"),
             });
           }
-
-          initScrollSync();
-          activeSectionIndex = 0;
-          updateActiveDot(0);
-          animatePanel(0, true);
-          if (elements.line && dotCenters[0])
-            elements.line.style.height = `${dotCenters[0]}px`;
         },
       });
     }
@@ -646,7 +640,7 @@ window.addEventListener("DOMContentLoaded", () => {
       mappingReady = true;
 
       elements.video.pause();
-      elements.video.currentTime = frameToTime(1);
+      elements.video.currentTime = frameToTime(1); // Set to first frame
 
       // Add video error handling
       elements.video.addEventListener("error", (e) => {
@@ -656,7 +650,24 @@ window.addEventListener("DOMContentLoaded", () => {
       hookDots();
       hookScrollButton();
       hookBurger();
-      runIntro();
+      initScrollSync();
+      activeSectionIndex = 0;
+      updateActiveDot(0);
+      animatePanel(0, true);
+      if (elements.line && dotCenters[0])
+        elements.line.style.height = `${dotCenters[0]}px`;
+
+      // Trigger intro animation on first scroll
+      window.addEventListener(
+        "scroll",
+        () => {
+          if (!hasScrolled) {
+            hasScrolled = true;
+            runIntro();
+          }
+        },
+        { once: true },
+      );
     }
 
     if (elements.video.readyState >= 1) {
