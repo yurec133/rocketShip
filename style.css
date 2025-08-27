@@ -329,6 +329,7 @@ body::-webkit-scrollbar {
   display: block;
   font-size: 30px;
   margin-bottom: -12px;
+  animation: pulseButton 1.2s infinite ease-in-out;
 }
 
 .scroll-icon {
