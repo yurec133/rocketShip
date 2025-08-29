@@ -384,6 +384,9 @@ window.addEventListener("DOMContentLoaded", () => {
     function hookScrollButton() {
       if (!elements.scrollButton) return;
       elements.scrollButton.addEventListener("click", () => {
+        // Only proceed if intro animation is complete
+        if (!isIntroComplete) return;
+
         const nextSection = activeSectionIndex + 1;
         if (nextSection >= sections) return;
         scrollToSection(nextSection);
@@ -391,7 +394,8 @@ window.addEventListener("DOMContentLoaded", () => {
         if (nextSection === sections - 1) {
           gsap.to(elements.scrollButton, {
             opacity: 0,
-            duration: 0.3,
+            duration: 0.8, // Increased duration for smoother animation
+            ease: "power2.out", // Smoother easing for consistency
             onComplete: () => {
               elements.scrollButton.style.display = "none";
             },
@@ -580,8 +584,24 @@ window.addEventListener("DOMContentLoaded", () => {
       );
     }
 
+    // ---- Disable/Enable Scroll
+    function disableScroll() {
+      smoother.paused(true);
+      document.documentElement.style.overflow = "hidden";
+      document.body.style.overflow = "hidden";
+    }
+
+    function enableScroll() {
+      smoother.paused(false);
+      document.documentElement.style.overflow = "";
+      document.body.style.overflow = "";
+    }
+
+    // ---- State (add this to your existing state variables)
+    let isIntroComplete = false; // New flag to track intro animation completion
     // ---- Intro Animation
     function runIntro() {
+      disableScroll();
       const dummy = { val: 0 };
       gsap.to(dummy, {
         val: 29,
@@ -625,6 +645,9 @@ window.addEventListener("DOMContentLoaded", () => {
               onStart: () => (elements.scrollButton.style.display = "block"),
             });
           }
+
+          isIntroComplete = true; // Set flag to true when intro completes
+          enableScroll();
         },
       });
     }
@@ -663,6 +686,7 @@ window.addEventListener("DOMContentLoaded", () => {
         () => {
           if (!hasScrolled) {
             hasScrolled = true;
+            smoother.scrollTop(0); // Reset scroll to top
             runIntro();
           }
         },
