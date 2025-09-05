@@ -91,7 +91,6 @@ body::-webkit-scrollbar {
   position: absolute;
   top: 0;
   width: 2px;
-  background: black;
   bottom: 0;
   left: 50%;
   transform: translateX(-50%);
